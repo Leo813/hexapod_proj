@@ -1,0 +1,25 @@
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+
+# Local Python environments
+.venv/
+venv/
+
+# Test and coverage artifacts
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Local Jupyter configuration and generated exports
+.jupyter/
+*.nbconvert.ipynb
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
