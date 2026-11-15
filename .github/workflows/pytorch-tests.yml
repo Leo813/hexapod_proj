@@ -1,0 +1,82 @@
+name: Stage 1 PyTorch validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'feature/**'
+      - 'codex/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage1-tests:
+    name: Python 3.10 / PyTorch 1.13.1 CPU
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          architecture: x64
+
+      - name: Install historical CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy==1.24.4
+          # Official historical CPU wheel index; no torchvision/torchaudio needed.
+          python -m pip install torch==1.13.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install project without replacing PyTorch
+        run: |
+          python -m pip install --no-deps --editable .
+          python -m pip check
+
+      - name: Verify Python, installed package, and CPU execution
+        run: |
+          python - <<'PY'
+          import sys
+          from importlib.metadata import version
+
+          import numpy as np
+          import torch
+          from hexapod_rl.networks import ActorCritic
+
+          print(f"Python: {sys.version}")
+          print(f"PyTorch: {torch.__version__}")
+          print(f"NumPy: {np.__version__}")
+          print(f"hexapod-rl: {version('hexapod-rl')}")
+          print(f"CUDA build: {torch.version.cuda}; CUDA available: {torch.cuda.is_available()}")
+          if sys.version_info[:2] != (3, 10):
+              raise RuntimeError("CI requires Python 3.10")
+          if torch.__version__ != '1.13.1+cpu':
+              raise RuntimeError("CI requires exactly PyTorch 1.13.1+cpu")
+          if np.__version__ != '1.24.4':
+              raise RuntimeError("CI requires NumPy 1.24.4")
+          if torch.version.cuda is not None or torch.cuda.is_available():
+              raise RuntimeError("Expected a CPU-only PyTorch installation")
+          tensor = torch.ones(3, device='cpu')
+          if tensor.sum().item() != 3 or tensor.numpy().sum() != 3:
+              raise RuntimeError("CPU tensor execution or NumPy interoperability failed")
+          print(f"CPU execution verified on {tensor.device}")
+          PY
+
+      - name: Test CI failure detection
+        run: python -B -m unittest discover -s ci -p 'test_*.py' -v
+
+      - name: Run all Stage 1 tests with no skips
+        run: python -B ci/run_stage1_tests.py
