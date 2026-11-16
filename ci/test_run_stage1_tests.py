@@ -1,4 +1,4 @@
-"""Exercise CI gates without torch; separate from the 32 Stage 1 tests."""
+"""Exercise CI gates without torch; separate from package validation tests."""
 
 import contextlib
 import io
@@ -6,11 +6,11 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from run_stage1_tests import main, run_suite
+from run_stage1_tests import MINIMUM_TESTS, main, run_suite
 
 
 class RunnerTests(unittest.TestCase):
-    def evaluate(self, first=None, count=32):
+    def evaluate(self, first=None, count=MINIMUM_TESTS):
         tests = [unittest.FunctionTestCase(lambda: None) for _ in range(count)]
         if first is not None:
             tests[0] = first
@@ -21,18 +21,18 @@ class RunnerTests(unittest.TestCase):
     def test_complete_success(self):
         code, output = self.evaluate()
         self.assertEqual(code, 0, output)
-        self.assertIn("discovered=32, executed=32", output)
+        self.assertIn(f"discovered={MINIMUM_TESTS}, executed={MINIMUM_TESTS}", output)
 
     def test_additional_tests_are_allowed(self):
-        code, output = self.evaluate(count=33)
+        code, output = self.evaluate(count=MINIMUM_TESTS + 1)
         self.assertEqual(code, 0, output)
 
     def test_too_few_tests_fail(self):
-        for count in (0, 31):
+        for count in (0, 32, MINIMUM_TESTS - 1):
             with self.subTest(count=count):
                 code, output = self.evaluate(count=count)
                 self.assertEqual(code, 1)
-                self.assertIn("at least 32 are required", output)
+                self.assertIn(f"at least {MINIMUM_TESTS} are required", output)
 
     def test_skip_fails_even_when_unittest_is_successful(self):
         def skip():
@@ -69,7 +69,7 @@ class RunnerTests(unittest.TestCase):
 
         code, output = self.evaluate(StopEarly())
         self.assertEqual(code, 1)
-        self.assertIn("Incomplete execution: ran 1 of 32", output)
+        self.assertIn(f"Incomplete execution: ran 1 of {MINIMUM_TESTS}", output)
 
     def test_expected_failure_is_not_accepted(self):
         class KnownFailure(unittest.TestCase):
