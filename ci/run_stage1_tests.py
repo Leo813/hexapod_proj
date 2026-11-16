@@ -1,4 +1,4 @@
-"""Run Stage 1 discovery, failing on missing coverage as well as test failures.
+"""Run Stage 1 + Stage 2 discovery, failing on missing coverage and failures.
 
 No simulator or test-framework dependency is needed. PyTorch is mandatory for
 the main entrypoint so the optional numerical tests cannot silently disappear.
@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import unittest
 
-MINIMUM_TESTS = 32
+MINIMUM_TESTS = 87  # 32 preserved Stage 1 tests + 55 Stage 2 tests
 
 
 def run_suite(suite, stream=None):
@@ -18,7 +18,7 @@ def run_suite(suite, stream=None):
     discovered = suite.countTestCases()
     result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
     print(
-        f"Stage 1: discovered={discovered}, executed={result.testsRun}, "
+        f"Stage 1 + Stage 2: discovered={discovered}, executed={result.testsRun}, "
         f"failures={len(result.failures)}, errors={len(result.errors)}, "
         f"skipped={len(result.skipped)}, "
         f"expected_failures={len(result.expectedFailures)}, "
@@ -47,7 +47,7 @@ def main():
     except Exception as error:
         print(f"::error::PyTorch import failed: {type(error).__name__}: {error}", file=sys.stderr)
         return 1
-    print(f"Running Stage 1 with PyTorch {torch.__version__}", flush=True)
+    print(f"Running Stage 1 + Stage 2 with PyTorch {torch.__version__}", flush=True)
     tests = Path(__file__).resolve().parents[1] / "tests"
     suite = unittest.TestLoader().discover(str(tests), pattern="test_*.py")
     return run_suite(suite)

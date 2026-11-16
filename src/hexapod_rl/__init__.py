@@ -1,5 +1,5 @@
 """Simulator-independent components. Importing configuration does not load torch."""
 
-from .config import ActorCriticConfig
+from .config import ActorCriticConfig, PPOConfig
 
-__all__ = ["ActorCriticConfig"]
+__all__ = ["ActorCriticConfig", "PPOConfig"]

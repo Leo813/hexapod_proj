@@ -273,3 +273,14 @@ network/tests, package metadata, original environment/configurations, and robot
 assets were untouched. No local dependencies were installed. Dependency
 installation on Linux and execution of all 32 tests without skips still require
 an actual GitHub Actions run.
+
+## Subsequent Stage 2 coverage (2026-11-15)
+
+The historical reports above are preserved. Stage 2 adds PPO core tests and
+renames the workflow display to **Stage 1 and 2 PyTorch validation**. The existing
+runner now discovers both stages and requires at least 87 tests, with zero skips
+and complete execution. All 32 Stage 1 tests remain unchanged. Dependency pins,
+runner OS and permissions remain unchanged. See
+[stage2-implementation.md](stage2-implementation.md) for the new algorithms,
+coverage, local dependency-blocked results and remaining validation requirements.
+No successful Stage 2 GitHub run has been observed during that implementation.

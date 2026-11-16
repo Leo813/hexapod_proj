@@ -1,4 +1,4 @@
-name: Stage 1 PyTorch validation
+name: Stage 1 and 2 PyTorch validation
 
 on:
   pull_request:
@@ -78,5 +78,5 @@ jobs:
       - name: Test CI failure detection
         run: python -B -m unittest discover -s ci -p 'test_*.py' -v
 
-      - name: Run all Stage 1 tests with no skips
+      - name: Run all Stage 1 and 2 tests with no skips
         run: python -B ci/run_stage1_tests.py
