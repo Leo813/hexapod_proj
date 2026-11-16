@@ -61,6 +61,10 @@ class StaticContractTests(unittest.TestCase):
 
     def test_package_imports_only_stdlib_torch_and_itself(self):
         allowed = {"dataclasses", "math", "typing", "torch", "hexapod_rl"}
+        # Stage 3 application I/O/configuration is separate from the tensor core.
+        application_imports = {"importlib", "os", "sys", "pathlib", "re", "random",
+                               "tempfile", "datetime", "json", "numpy", "omegaconf"}
+        application_files = {"launcher.py", "collector.py", "trainer.py", "checkpoints.py", "evaluation.py"}
         for path in (ROOT / "src" / "hexapod_rl").rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
@@ -70,7 +74,8 @@ class StaticContractTests(unittest.TestCase):
                 elif isinstance(node, ast.ImportFrom) and node.level == 0:
                     names = [node.module]
                 for name in names:
-                    self.assertIn(name.split(".")[0], allowed, str(path))
+                    permitted = allowed | application_imports if path.name in application_files or "integration" in path.parts else allowed
+                    self.assertIn(name.split(".")[0], permitted, str(path))
 
     def test_active_urdf_has_18_revolute_joints_and_no_mimic(self):
         root = ET.parse(ROOT / "hexapod2" / "urdf" / "test_spider6.urdf").getroot()

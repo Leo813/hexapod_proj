@@ -9,5 +9,8 @@ description = "Independent PyTorch learning components for the hexapod project"
 requires-python = ">=3.8"
 dependencies = ["torch>=1.13"]
 
+[project.optional-dependencies]
+integration = ["omegaconf>=2.2,<2.4"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
