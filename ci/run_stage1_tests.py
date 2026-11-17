@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import unittest
 
-MINIMUM_TESTS = 124  # 32 Stage 1 + 55 Stage 2 + 37 Stage 3 tests
+MINIMUM_TESTS = 156  # 144 existing tests + 12 checkpoint format/API regressions
 
 
 def run_suite(suite, stream=None):

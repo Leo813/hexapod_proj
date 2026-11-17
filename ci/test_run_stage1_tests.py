@@ -28,7 +28,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(code, 0, output)
 
     def test_too_few_tests_fail(self):
-        for count in (0, 32, 87, MINIMUM_TESTS - 1):
+        for count in (0, 32, 87, 124, 144, MINIMUM_TESTS - 1):
             with self.subTest(count=count):
                 code, output = self.evaluate(count=count)
                 self.assertEqual(code, 1)

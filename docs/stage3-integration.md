@@ -1,5 +1,14 @@
 # Stage 3: custom PPO training application
 
+**Stage 3.5B update:** this document retains the original Stage 3 implementation
+and validation record. For current version 3 checkpoints, explicit trust for
+legacy files/old loaders, configuration precedence/notices and the 156-test gate,
+see [targeted audit corrections](stage3-audit-corrections.md).
+Its [original GPU runtime review](stage3-audit-corrections.md#original-gpu-runtime-compatibility-review-2026-11-17)
+distinguishes Ubuntu 20.04 / Preview 4 / CUDA training from the Python 3.10
+CPU CI environment, documents the older-PyTorch loading limitation, and gives
+the required native validation procedure. GPU defaults remain unchanged.
+
 Date: 2026-11-16. Branch: `feat/custom-ppo-stage3`. Starting commit
 `4771c170421333e49ea2effad59ba182380158e3` includes the Stage 2 merge and was
 verified identical to GitHub `main` before edits. The initial working tree was

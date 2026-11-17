@@ -42,6 +42,7 @@ class ApplicationConfig:
     ppo: PPOConfig
     training: TrainingConfig
     adjustments: tuple = ()
+    notices: tuple = ()
 
 
 def parse_arguments(arguments):
@@ -100,12 +101,56 @@ def _expect(mapping, key, value):
         raise ValueError(f"Unsupported {key}={mapping.get(key)!r}; required {value!r}")
 
 
+def validate_clipping(env):
+    """VecTask accepts zero and positive infinity; reject invalid clamp bounds."""
+    for name in ("clipActions", "clipObservations"):
+        value = env.get(name, float("inf"))
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or math.isnan(value) or value < 0):
+            raise ValueError(f"task.env.{name} must be a nonnegative number (positive infinity is allowed)")
+
+
+def ineffective_setting_notices(task):
+    """Warn on non-baseline values without rejecting historical task YAMLs.
+
+    These fields remain untouched. This table describes the unchanged task,
+    not alternative physics settings to apply on its behalf.
+    """
+    settings = (
+        ("envSpacing", 1.0, "the task uses spacing 1.0"),
+        ("control.controlFrequencyInv", 1, "VecTask reads env.controlFrequencyInv, not this nested field"),
+        ("urdfAsset.collapseFixedJoints", True, "the task always collapses fixed joints"),
+        ("urdfAsset.fixBaseLink", False, "the task always uses a free base"),
+        ("urdfAsset.defaultDofDriveMode", 4, "the task sets position drive mode directly"),
+        ("baseInitState.rot", [0., 0., 0., 1.], "actor creation uses the identity rotation"),
+        ("baseInitState.vLinear", [0., 0., 0.], "the configured initial velocity is not applied"),
+        ("baseInitState.vAngular", [0., 0., 0.], "the configured initial velocity is not applied"),
+        ("randomCommandVelocityRanges.linear_x", [-.5, .5], "final commands are fixed to [0, 1, 0, -1]"),
+        ("randomCommandVelocityRanges.linear_y", [-1., 1.], "sampled commands are overwritten with [0, 1, 0, -1]"),
+        ("randomCommandVelocityRanges.yaw", [-1., 1.], "sampled commands are overwritten with [0, 1, 0, -1]"),
+        ("learn.linearVelocityXYRewardScale", 1.0, "the active linear reward uses hard-coded coefficients"),
+        ("learn.angularVelocityZRewardScale", .5, "the active angular reward uses hard-coded coefficients"),
+    )
+    notices = []
+    for path, baseline, explanation in settings:
+        value = task["env"]
+        for key in path.split("."):
+            if not isinstance(value, dict) or key not in value:
+                break
+            value = value[key]
+        else:
+            if value != baseline:
+                notices.append(f"task.env.{path}={value!r} does not control the requested behavior: {explanation}.")
+    return tuple(notices)
+
+
 def translate_config(root, shrink_minibatch=False):
     """Translate a resolved mapping; callable without OmegaConf or simulator."""
     try:
         task, params = root["task"], root["train"]["params"]
         network, train = params["network"], params["config"]
         validate_devices(root)
+        validate_clipping(task["env"])
         if set(params) - {"seed", "algo", "model", "network", "load_checkpoint", "load_path", "config"}:
             raise ValueError("Unsupported trainer params outside the feedforward baseline")
         if params["seed"] != root["seed"]:
@@ -176,6 +221,10 @@ def translate_config(root, shrink_minibatch=False):
         if missing:
             raise ValueError(f"Missing PPO YAML settings: {sorted(missing)}")
         kwargs = {key: train[key] for key in ppo_fields & set(train)}
+        if "reward_scale" in train and (isinstance(train["reward_scale"], bool)
+                or not isinstance(train["reward_scale"], (int, float))
+                or train["reward_scale"] != train["reward_shaper"]["scale_value"]):
+            raise ValueError("Conflicting reward_scale and reward_shaper.scale_value; use the historical reward_shaper.scale_value")
         kwargs["reward_scale"] = train["reward_shaper"]["scale_value"]
         if kwargs["num_actors"] != task["env"]["numEnvs"]:
             raise ValueError("num_actors must match task.env.numEnvs")
@@ -205,6 +254,8 @@ def translate_config(root, shrink_minibatch=False):
             raise ValueError("eval_steps must be positive")
         if type(root["tensorboard"]) is not bool:
             raise ValueError("tensorboard must be boolean")
+        if type(root.get("trust_legacy_checkpoint", False)) is not bool:
+            raise ValueError("trust_legacy_checkpoint must be boolean")
         if root["test"] and not root["checkpoint"]:
             raise ValueError("test=True requires checkpoint=/path/to/custom.pt")
         if root["checkpoint"] and not Path(root["checkpoint"]).expanduser().is_file():
@@ -234,8 +285,10 @@ def load_configuration(arguments):
         root.pop(key, None)
     root.task = OmegaConf.load(cfg_dir / "task/hexapod.yaml")
     root.train = OmegaConf.load(cfg_dir / "train/hexapodPPO.yaml")
-    for key, value in dict(output_dir="", eval_steps=1000, tensorboard=False).items():
-        root[key] = value
+    for key, value in dict(output_dir="", eval_steps=1000, tensorboard=False,
+                           trust_legacy_checkpoint=False).items():
+        if key not in root:
+            root[key] = value
     overrides.pop("task", None)
     overrides.pop("train", None)
     for key in overrides:
@@ -246,4 +299,5 @@ def load_configuration(arguments):
     resolved = OmegaConf.to_container(root, resolve=True)
     model, ppo, training, adjustments = translate_config(resolved,
         shrink_minibatch="num_envs" in overrides and "train.params.config.minibatch_size" not in overrides)
-    return ApplicationConfig(package, cfg_dir, resolved, model, ppo, training, adjustments)
+    return ApplicationConfig(package, cfg_dir, resolved, model, ppo, training, adjustments,
+                             ineffective_setting_notices(resolved["task"]))

@@ -47,10 +47,10 @@ class Trainer:
         save_checkpoint(self.output_dir / "checkpoints" / filename, self.algorithm, self.counters(),
                         self.config, self.resolved_config)
 
-    def resume(self, path):
+    def resume(self, path, trust_legacy=False):
         if self.collector is not None:
             raise RuntimeError("Resume before collection, using a fresh simulator environment")
-        counters = load_checkpoint(path, self.algorithm, resume=True)
+        counters = load_checkpoint(path, self.algorithm, resume=True, trust_legacy=trust_legacy)
         self.epoch, self.frames, self.best_reward = counters["epoch"], counters["frames"], counters["best_reward"]
 
     def run(self):

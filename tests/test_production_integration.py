@@ -15,6 +15,7 @@ from integration_test_support import HAS_TORCH, ROOT, MockInstalledTask, mock_ad
 if HAS_TORCH:
     import torch
     from hexapod_rl.checkpoints import load_checkpoint, save_checkpoint
+    from hexapod_rl.checkpoint_format import decode_checkpoint, encode_checkpoint
     from hexapod_rl.collector import EpisodeStatistics, RolloutCollector
     from hexapod_rl.evaluation import evaluate
     from hexapod_rl.integration.configuration import TrainingConfig
@@ -207,9 +208,9 @@ class TrainerCheckpointTests(unittest.TestCase):
             load_checkpoint(file, altered)
         for a, b in zip(original, altered.model.parameters()):
             torch.testing.assert_close(a, b, rtol=0, atol=0)
-        state = torch.load(file, map_location="cpu")
+        state = decode_checkpoint(torch.load(file, map_location="cpu", weights_only=True), torch.Tensor)
         state["network_config"]["action_dim"] = 12
-        torch.save(state, file)
+        torch.save(encode_checkpoint(state, torch.Tensor), file, pickle_protocol=2)
         with self.assertRaisesRegex(ValueError, "dimensions/architecture"):
             load_checkpoint(file, algorithm)
 

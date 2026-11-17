@@ -20,6 +20,7 @@ Paths: isaacgymenvs_path=/absolute/IsaacGymEnvs [config_path=/absolute/cfg]
 Devices: sim_device=cuda:0 rl_device=cuda:0 pipeline=gpu graphics_device_id=0
 Outputs: output_dir=/path/run tensorboard=False
 Resume: checkpoint=/path/custom.pt max_iterations=700
+Trusted files ONLY (legacy v1/v2 or old torch): trust_legacy_checkpoint=True (permits pickle code execution)
 Other overrides: existing task.* / train.* YAML leaves, seed, torch_deterministic,
 headless, experiment, force_render. No Hydra sweeps, +key, LSTM, or multi-GPU.
 See docs/stage3-integration.md for manual installation and validation limits.
@@ -67,6 +68,8 @@ def run_application(application):
     establish_runtime(root)
     for message in application.adjustments:
         print(f"Configuration adjustment: {message}", flush=True)
+    for message in application.notices:
+        print(f"Configuration notice: {message}", flush=True)
     environment, task_writer = construct_task(application)
     adapter = logger = None
     try:
@@ -76,7 +79,8 @@ def run_application(application):
         model = ActorCritic(application.network).to(root["rl_device"])
         algorithm = PPO(model, application.ppo)
         if root["test"]:
-            load_checkpoint(root["checkpoint"], algorithm, resume=False)
+            load_checkpoint(root["checkpoint"], algorithm, resume=False,
+                            trust_legacy=root["trust_legacy_checkpoint"])
             report = evaluate(algorithm, adapter, root["eval_steps"], application.training.games_to_track)
             print(f"Evaluation: {report}", flush=True)
             return report
@@ -91,7 +95,7 @@ def run_application(application):
         logger = TrainingLogger(application.training.print_stats, output / "summaries" if root["tensorboard"] else None)
         trainer = Trainer(algorithm, adapter, output, application.training, logger, root)
         if root["checkpoint"]:
-            trainer.resume(root["checkpoint"])
+            trainer.resume(root["checkpoint"], trust_legacy=root["trust_legacy_checkpoint"])
             print(f"Restored learning state at epoch={trainer.epoch}, frames={trainer.frames}; simulator episodes are fresh", flush=True)
         (output / "resolved-config.json").write_text(json.dumps(root, indent=2), encoding="utf-8")
         print(f"Custom PPO output: {output}", flush=True)
