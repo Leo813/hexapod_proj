@@ -63,7 +63,7 @@ class StaticContractTests(unittest.TestCase):
         allowed = {"dataclasses", "math", "typing", "torch", "hexapod_rl"}
         # Stage 3 application I/O/configuration is separate from the tensor core.
         application_imports = {"importlib", "os", "sys", "pathlib", "re", "random",
-                               "tempfile", "datetime", "json", "numpy", "omegaconf"}
+                               "tempfile", "datetime", "json", "numpy", "omegaconf", "pickle", "warnings"}
         application_files = {"launcher.py", "collector.py", "trainer.py", "checkpoints.py", "evaluation.py"}
         for path in (ROOT / "src" / "hexapod_rl").rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8"))

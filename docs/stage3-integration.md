@@ -1,5 +1,10 @@
 # Stage 3: custom PPO training application
 
+**Stage 3.5B update:** this document retains the original Stage 3 implementation
+and validation record. For current version 2 checkpoints, explicit trust for
+legacy version 1 files, configuration precedence/notices and the 144-test gate,
+see [targeted audit corrections](stage3-audit-corrections.md).
+
 Date: 2026-11-16. Branch: `feat/custom-ppo-stage3`. Starting commit
 `4771c170421333e49ea2effad59ba182380158e3` includes the Stage 2 merge and was
 verified identical to GitHub `main` before edits. The initial working tree was

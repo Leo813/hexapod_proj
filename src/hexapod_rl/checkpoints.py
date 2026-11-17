@@ -4,13 +4,15 @@ from dataclasses import asdict
 import importlib.util
 import os
 from pathlib import Path
+import pickle
 import random
 import tempfile
+import warnings
 
 import torch
 
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 def rng_state():
@@ -18,7 +20,10 @@ def rng_state():
               "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None}
     if importlib.util.find_spec("numpy") is not None:
         import numpy as np
-        result["numpy"] = np.random.get_state()
+        name, keys, position, has_gauss, cached_gaussian = np.random.get_state()
+        # Builtins only: NumPy arrays require unrestricted pickle reconstruction.
+        result["numpy"] = dict(name=name, keys=keys.tolist(), position=position,
+                               has_gauss=has_gauss, cached_gaussian=cached_gaussian)
     return result
 
 
@@ -31,7 +36,11 @@ def restore_rng(state):
         torch.cuda.set_rng_state_all([value.cpu() for value in state["cuda"]])
     if "numpy" in state:
         import numpy as np
-        np.random.set_state(state["numpy"])
+        saved = state["numpy"]
+        if isinstance(saved, dict):
+            saved = (saved["name"], np.asarray(saved["keys"], dtype=np.uint32),
+                     saved["position"], saved["has_gauss"], saved["cached_gaussian"])
+        np.random.set_state(saved)  # tuple form is supported for explicitly trusted v1 files
 
 
 def save_checkpoint(path, algorithm, counters, training_config, resolved_config=None):
@@ -55,8 +64,11 @@ def save_checkpoint(path, algorithm, counters, training_config, resolved_config=
             temporary.unlink()
 
 
-def load_checkpoint(path, algorithm, resume=True):
-    """Load trusted custom files only; torch's pickle format can execute code.
+def load_checkpoint(path, algorithm, resume=True, trust_legacy=False):
+    """Restricted loading by default; never automatically retry unrestricted.
+
+    trust_legacy=True permits arbitrary pickle execution for trusted v1 files.
+    Restricted loading is not a sandbox: only accept files from known sources.
 
     Evaluation checks network/normalization compatibility but permits different
     batch sizes. Resume checks all PPO settings, restores optimizer/LR/scaler/RNG,
@@ -66,9 +78,23 @@ def load_checkpoint(path, algorithm, resume=True):
     if not path.is_file():
         raise FileNotFoundError(f"Checkpoint not found: {path}")
     # CPU loading keeps CPU RNG bytes and permits CPU evaluation of CUDA models.
-    state = torch.load(path, map_location="cpu")
-    if not isinstance(state, dict) or state.get("format_version") != FORMAT_VERSION:
+    if type(trust_legacy) is not bool:
+        raise ValueError("trust_legacy must be boolean")
+    if trust_legacy:
+        warnings.warn("Unrestricted checkpoint loading explicitly enabled; pickle may execute code. "
+                      "Only load a checkpoint whose source you trust.", RuntimeWarning, stacklevel=2)
+    try:
+        state = torch.load(path, map_location="cpu", weights_only=not trust_legacy)
+    except (pickle.UnpicklingError, RuntimeError) as error:
+        if trust_legacy:
+            raise
+        raise ValueError("Restricted checkpoint loading failed; no unrestricted retry was attempted. "
+                         "For a trusted legacy v1 file only, explicitly set trust_legacy=True "
+                         "(launcher: trust_legacy_checkpoint=True).") from error
+    if not isinstance(state, dict) or state.get("format_version") not in (1, FORMAT_VERSION):
         raise ValueError("Not a supported custom PPO checkpoint; RL-Games checkpoint conversion is not supported")
+    if state["format_version"] == 1 and not trust_legacy:
+        raise ValueError("Legacy v1 checkpoint requires explicit trust_legacy=True")
     if state.get("network_config") != asdict(algorithm.model.config):
         raise ValueError("Checkpoint network dimensions/architecture differ from the configured ActorCritic")
     current = asdict(algorithm.config)
@@ -82,6 +108,19 @@ def load_checkpoint(path, algorithm, resume=True):
         saved = state["normalizers"][name]
         if (module is None) != (saved is None):
             raise ValueError(f"Checkpoint has incompatible {name}")
+    fresh_scaler = None
+    if resume:
+        if any(group["lr"] != state["learning_rate"] for group in state["optimizer"]["param_groups"]):
+            raise ValueError("Checkpoint optimizer learning rate does not match saved learning_rate")
+        cuda_rng = state["rng"].get("cuda")
+        if cuda_rng is not None and torch.cuda.is_available() and len(cuda_rng) != torch.cuda.device_count():
+            raise ValueError("Checkpoint CUDA RNG device count differs; exact RNG restoration is unavailable")
+        if algorithm.scaler.is_enabled() and not state["scaler"]:
+            # Never keep a possibly used destination scaler's growth history.
+            fresh_scaler = torch.cuda.amp.GradScaler(enabled=True)
+            warnings.warn("Checkpoint AMP scaler was disabled; initializing a fresh enabled scaler. "
+                          "Compatible model, optimizer, normalizers and RNG state will be restored; "
+                          "AMP growth history cannot be continued.", RuntimeWarning, stacklevel=2)
     algorithm.model.load_state_dict(state["model"], strict=True)
     for name in ("observation_normalizer", "value_normalizer"):
         module = getattr(algorithm, name)
@@ -90,9 +129,10 @@ def load_checkpoint(path, algorithm, resume=True):
             module.eval()
     if resume:
         algorithm.optimizer.load_state_dict(state["optimizer"])
-        algorithm.scaler.load_state_dict(state["scaler"])
-        if any(group["lr"] != state["learning_rate"] for group in algorithm.optimizer.param_groups):
-            raise ValueError("Checkpoint optimizer learning rate does not match saved learning_rate")
+        if fresh_scaler is not None:
+            algorithm.scaler = fresh_scaler
+        else:
+            algorithm.scaler.load_state_dict(state["scaler"])
         restore_rng(state["rng"])
     algorithm.model.eval()
     return state["counters"]
