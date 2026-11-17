@@ -4,6 +4,11 @@ The original hexapod task was adapted from NVIDIA IsaacGymEnvs' ANYmal example.
 The custom trainer replaces the RL-Games learning backend while retaining that
 task, Isaac Gym physics, and IsaacGymEnvs `VecTask`.
 
+Use the [Stage 4A task preparation guide](docs/stage4-installation.md) to inspect
+your environment, preview unchanged task/configuration/asset copies, explicitly
+apply them, and verify their hashes. This utility does not install Isaac Gym,
+PyTorch or CUDA; native GPU validation remains Stage 4B work.
+
 From this repository, after manually installing Isaac Gym Preview 4 and the
 historical IsaacGymEnvs checkout and placing the task/configuration/assets:
 
