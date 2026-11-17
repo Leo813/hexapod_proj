@@ -1,10 +1,12 @@
 """Stage 3.5B regressions; no Isaac Gym import or dynamics model."""
 
 from pathlib import Path
+import pickletools
 import random
 import tempfile
 from types import SimpleNamespace
 import unittest
+import zipfile
 from unittest.mock import Mock, patch
 
 from integration_test_support import HAS_OMEGACONF, HAS_TORCH, make_installation, small_ppo
@@ -15,6 +17,7 @@ from hexapod_rl.integration.configuration import (TrainingConfig, load_configura
 if HAS_TORCH:
     import torch
     from hexapod_rl.checkpoints import FORMAT_VERSION, load_checkpoint, save_checkpoint
+    from hexapod_rl.checkpoint_format import decode_checkpoint, encode_checkpoint
     from hexapod_rl.collector import RolloutCollector
     from hexapod_rl.config import ActorCriticConfig, PPOConfig
     from hexapod_rl.integration.isaacgym_adapter import IsaacGymAdapter
@@ -120,15 +123,21 @@ class CheckpointCompatibilityTests(unittest.TestCase):
         self.counters = dict(epoch=3, frames=24, best_reward=1.)
         save_checkpoint(self.file, self.algorithm, self.counters, TrainingConfig())
 
-    def test_v2_restricted_load_and_numpy_rng_roundtrip(self):
+    def read_state(self):
+        return decode_checkpoint(torch.load(self.file, map_location="cpu", weights_only=True), torch.Tensor)
+
+    def write_state(self, state):
+        torch.save(encode_checkpoint(state, torch.Tensor), self.file, pickle_protocol=2)
+
+    def test_v3_restricted_load_and_numpy_rng_roundtrip(self):
         # NumPy is installed in CI. Do not silently omit RNG validation if absent.
         import numpy as np
         np.random.seed(917)
         np.random.normal(size=1)  # leave a cached Gaussian to verify all MT19937 fields
         save_checkpoint(self.file, self.algorithm, self.counters, TrainingConfig())
-        saved = torch.load(self.file, map_location="cpu", weights_only=True)
-        self.assertEqual(saved["format_version"], 2)
-        self.assertEqual(FORMAT_VERSION, 2)
+        saved = self.read_state()
+        self.assertEqual(saved["format_version"], 3)
+        self.assertEqual(FORMAT_VERSION, 3)
         self.assertIsInstance(saved["rng"]["numpy"]["keys"], list)
         expected = (np.random.normal(size=5), np.random.rand(5), random.random(), torch.rand(3))
         with patch("hexapod_rl.checkpoints.torch.load", wraps=torch.load) as loader:
@@ -141,7 +150,7 @@ class CheckpointCompatibilityTests(unittest.TestCase):
 
     def test_v1_requires_explicit_trust_and_restores_rng(self):
         import numpy as np
-        state = torch.load(self.file, map_location="cpu", weights_only=True)
+        state = self.read_state()
         state["format_version"] = 1
         state["rng"]["numpy"] = np.random.get_state()
         torch.save(state, self.file)
@@ -197,11 +206,11 @@ class CheckpointCompatibilityTests(unittest.TestCase):
         self.assertEqual(destination.learning_rate, self.algorithm.learning_rate)
 
     def test_nonempty_enabled_scaler_state_is_restored(self):
-        state = torch.load(self.file, map_location="cpu", weights_only=True)
+        state = self.read_state()
         scaler_state = dict(scale=2048., growth_factor=2., backoff_factor=.5,
                             growth_interval=2000, _growth_tracker=7)
         state["scaler"] = scaler_state
-        torch.save(state, self.file)
+        self.write_state(state)
         destination = small_ppo()
         destination.scaler = Mock()
         destination.scaler.is_enabled.return_value = True
@@ -221,13 +230,112 @@ class CheckpointCompatibilityTests(unittest.TestCase):
         destination.scaler.load_state_dict.assert_not_called()
 
     def test_invalid_learning_rate_fails_before_model_restore(self):
-        state = torch.load(self.file, map_location="cpu", weights_only=True)
+        state = self.read_state()
         state["learning_rate"] *= 2
-        torch.save(state, self.file)
+        self.write_state(state)
         with patch.object(self.algorithm.model, "load_state_dict") as restore:
             with self.assertRaisesRegex(ValueError, "learning rate"):
                 load_checkpoint(self.file, self.algorithm)
         restore.assert_not_called()
+
+    def test_complete_archive_uses_historical_restricted_opcodes(self):
+        # Inspect the actual torch.save payload, including tensor reconstruction.
+        # List from PyTorch v1.13.1 torch/_weights_only_unpickler.py.
+        supported = set("APPEND APPENDS BINGET BININT BININT1 BININT2 BINPERSID BINPUT "
+            "BINUNICODE BUILD EMPTY_DICT EMPTY_LIST EMPTY_SET EMPTY_TUPLE GLOBAL LONG1 "
+            "LONG_BINGET LONG_BINPUT MARK NEWFALSE NEWOBJ NEWTRUE NONE PROTO REDUCE "
+            "SETITEM SETITEMS SHORT_BINSTRING STOP TUPLE TUPLE1 TUPLE2 TUPLE3".split())
+        state = self.read_state()
+        state["scaler"] = dict(scale=65536., growth_factor=2., backoff_factor=.5,
+                               growth_interval=2000, _growth_tracker=7)
+        state["resolved_config"] = {"clip": float("inf"), "negative": float("-inf"),
+            "unset": None, "flags": [True, False], "nested": (0.1, -0., 2 ** 100)}
+        state["rng"]["python"] = (state["rng"]["python"][0], state["rng"]["python"][1], .125)
+        self.write_state(state)
+        with zipfile.ZipFile(self.file) as archive:
+            name, = [n for n in archive.namelist() if n.endswith("/data.pkl")]
+            ops = list(pickletools.genops(archive.read(name)))
+        self.assertLessEqual({op.name for op, _, _ in ops}, supported)
+        self.assertEqual([(op.name, arg) for op, arg, _ in ops if op.name == "PROTO"], [("PROTO", 2)])
+        self.assertNotIn("BINFLOAT", {op.name for op, _, _ in ops})
+        restored = self.read_state()  # real restricted loader, not a mock
+        self.assertEqual(restored["scaler"], state["scaler"])
+        self.assertEqual(restored["resolved_config"], state["resolved_config"])
+        self.assertEqual(restored["rng"]["python"], state["rng"]["python"])
+        self.assertEqual(restored["model"]._metadata, state["model"]._metadata)
+        for name in ("observation_normalizer", "value_normalizer"):
+            for key, value in state["normalizers"][name].items():
+                torch.testing.assert_close(restored["normalizers"][name][key], value, rtol=0, atol=0)
+
+    def test_v2_explicit_trust_migrates_to_restricted_v3(self):
+        state = self.read_state()
+        state["format_version"] = 2
+        torch.save(state, self.file, pickle_protocol=2)
+        destination = small_ppo()
+        if torch.__version__.startswith("1.13.1"):
+            with self.assertRaisesRegex(ValueError, "no unrestricted retry"):
+                load_checkpoint(self.file, destination)
+        with self.assertWarnsRegex(RuntimeWarning, "Unrestricted checkpoint"):
+            self.assertEqual(load_checkpoint(self.file, destination, trust_legacy=True), self.counters)
+        for old, new in zip(self.algorithm.model.parameters(), destination.model.parameters()):
+            torch.testing.assert_close(old, new, rtol=0, atol=0)
+            for key in ("step", "exp_avg", "exp_avg_sq"):
+                torch.testing.assert_close(self.algorithm.optimizer.state[old][key],
+                                           destination.optimizer.state[new][key], rtol=0, atol=0)
+        save_checkpoint(self.file, destination, self.counters, TrainingConfig())
+        self.assertEqual(self.read_state()["format_version"], 3)
+        load_checkpoint(self.file, small_ppo())
+
+    def test_old_torch_rejects_untrusted_before_deserialization(self):
+        with patch("hexapod_rl.checkpoints._HAS_WEIGHTS_ONLY", False):
+            with patch("hexapod_rl.checkpoints.torch.load") as loader:
+                for resume in (True, False):
+                    with self.subTest(resume=resume), self.assertRaisesRegex(ValueError, "no deserialization attempted"):
+                        load_checkpoint(self.file, self.algorithm, resume=resume)
+        loader.assert_not_called()
+
+    def test_old_torch_trusted_load_omits_weights_only_for_all_versions(self):
+        import numpy as np
+        state = self.read_state()
+        native_loader = torch.load
+
+        # Enforce the old call signature while using installed torch for tensors.
+        # This does not claim execution under native PyTorch 1.10.
+        def old_loader(path, map_location=None):
+            return native_loader(path, map_location=map_location, weights_only=False)
+
+        for version in (1, 2, 3):
+            fixture = dict(state, format_version=version)
+            if version == 1:
+                fixture["rng"] = dict(state["rng"], numpy=np.random.get_state())
+            torch.save(encode_checkpoint(fixture, torch.Tensor) if version == 3 else fixture,
+                       self.file, pickle_protocol=2)
+            with self.subTest(version=version), patch("hexapod_rl.checkpoints._HAS_WEIGHTS_ONLY", False):
+                with patch("hexapod_rl.checkpoints.torch.load", side_effect=old_loader) as loader:
+                    with self.assertWarnsRegex(RuntimeWarning, "Unrestricted checkpoint"):
+                        self.assertEqual(load_checkpoint(self.file, small_ppo(), trust_legacy=True), self.counters)
+                loader.assert_called_once_with(self.file, map_location="cpu")
+
+    def test_restored_state_produces_identical_next_cpu_update(self):
+        self.algorithm.update(collect_mock(self.algorithm)[0])
+        destination = small_ppo()
+        load_checkpoint(self.file, destination)
+        destination.update(collect_mock(destination)[0])
+        for old, new in zip(self.algorithm.model.parameters(), destination.model.parameters()):
+            torch.testing.assert_close(old, new, rtol=0, atol=0)
+            for key in ("step", "exp_avg", "exp_avg_sq"):
+                torch.testing.assert_close(self.algorithm.optimizer.state[old][key],
+                                           destination.optimizer.state[new][key], rtol=0, atol=0)
+        for name in ("observation_normalizer", "value_normalizer"):
+            for key, value in getattr(self.algorithm, name).state_dict().items():
+                torch.testing.assert_close(getattr(destination, name).state_dict()[key], value, rtol=0, atol=0)
+        self.assertEqual(destination.learning_rate, self.algorithm.learning_rate)
+
+    def test_unsupported_metadata_does_not_replace_existing_checkpoint(self):
+        original = self.file.read_bytes()
+        with self.assertRaisesRegex(TypeError, "Unsupported checkpoint metadata"):
+            save_checkpoint(self.file, self.algorithm, self.counters, TrainingConfig(), {"custom": object()})
+        self.assertEqual(self.file.read_bytes(), original)
 
 
 class FullShapeTask:

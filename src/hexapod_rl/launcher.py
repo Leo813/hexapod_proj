@@ -20,7 +20,7 @@ Paths: isaacgymenvs_path=/absolute/IsaacGymEnvs [config_path=/absolute/cfg]
 Devices: sim_device=cuda:0 rl_device=cuda:0 pipeline=gpu graphics_device_id=0
 Outputs: output_dir=/path/run tensorboard=False
 Resume: checkpoint=/path/custom.pt max_iterations=700
-Trusted legacy v1 files ONLY: trust_legacy_checkpoint=True (permits pickle code execution)
+Trusted files ONLY (legacy v1/v2 or old torch): trust_legacy_checkpoint=True (permits pickle code execution)
 Other overrides: existing task.* / train.* YAML leaves, seed, torch_deterministic,
 headless, experiment, force_render. No Hydra sweeps, +key, LSTM, or multi-GPU.
 See docs/stage3-integration.md for manual installation and validation limits.

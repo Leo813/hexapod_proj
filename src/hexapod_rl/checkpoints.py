@@ -2,6 +2,7 @@
 
 from dataclasses import asdict
 import importlib.util
+import inspect
 import os
 from pathlib import Path
 import pickle
@@ -11,8 +12,10 @@ import warnings
 
 import torch
 
+from .checkpoint_format import FORMAT_VERSION, decode_checkpoint, encode_checkpoint
 
-FORMAT_VERSION = 2
+
+_HAS_WEIGHTS_ONLY = "weights_only" in inspect.signature(torch.load).parameters
 
 
 def rng_state():
@@ -52,12 +55,15 @@ def save_checkpoint(path, algorithm, counters, training_config, resolved_config=
         optimizer=algorithm.optimizer.state_dict(), scaler=algorithm.scaler.state_dict(),
         learning_rate=algorithm.learning_rate, counters=dict(counters), rng=rng_state(),
         simulator_state=None)
+    wire = encode_checkpoint(state, torch.Tensor)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=str(path.parent), suffix=".tmp", delete=False) as handle:
         temporary = Path(handle.name)
     try:
-        torch.save(state, temporary)
+        # 1.13.1's restricted unpickler implements only a subset of protocol 2.
+        # All scalar/container metadata is inside one JSON string, not pickle.
+        torch.save(wire, temporary, pickle_protocol=2)
         os.replace(temporary, path)
     finally:
         if temporary.exists():
@@ -67,7 +73,8 @@ def save_checkpoint(path, algorithm, counters, training_config, resolved_config=
 def load_checkpoint(path, algorithm, resume=True, trust_legacy=False):
     """Restricted loading by default; never automatically retry unrestricted.
 
-    trust_legacy=True permits arbitrary pickle execution for trusted v1 files.
+    trust_legacy=True permits arbitrary pickle execution for trusted files,
+    including legacy v1/v2 and runtimes without restricted loading support.
     Restricted loading is not a sandbox: only accept files from known sources.
 
     Evaluation checks network/normalization compatibility but permits different
@@ -80,21 +87,28 @@ def load_checkpoint(path, algorithm, resume=True, trust_legacy=False):
     # CPU loading keeps CPU RNG bytes and permits CPU evaluation of CUDA models.
     if type(trust_legacy) is not bool:
         raise ValueError("trust_legacy must be boolean")
+    if not _HAS_WEIGHTS_ONLY and not trust_legacy:
+        raise ValueError("This PyTorch has no weights_only restricted loader; no deserialization attempted. "
+                         "Only for a trusted checkpoint, explicitly set trust_legacy=True "
+                         "(launcher: trust_legacy_checkpoint=True).")
     if trust_legacy:
         warnings.warn("Unrestricted checkpoint loading explicitly enabled; pickle may execute code. "
                       "Only load a checkpoint whose source you trust.", RuntimeWarning, stacklevel=2)
     try:
-        state = torch.load(path, map_location="cpu", weights_only=not trust_legacy)
+        options = {"weights_only": not trust_legacy} if _HAS_WEIGHTS_ONLY else {}
+        state = torch.load(path, map_location="cpu", **options)
     except (pickle.UnpicklingError, RuntimeError) as error:
         if trust_legacy:
             raise
         raise ValueError("Restricted checkpoint loading failed; no unrestricted retry was attempted. "
-                         "For a trusted legacy v1 file only, explicitly set trust_legacy=True "
+                         "For a trusted legacy v1/v2 file only, explicitly set trust_legacy=True "
                          "(launcher: trust_legacy_checkpoint=True).") from error
-    if not isinstance(state, dict) or state.get("format_version") not in (1, FORMAT_VERSION):
+    if not isinstance(state, dict) or type(state.get("format_version")) is not int or state["format_version"] not in (1, 2, FORMAT_VERSION):
         raise ValueError("Not a supported custom PPO checkpoint; RL-Games checkpoint conversion is not supported")
     if state["format_version"] == 1 and not trust_legacy:
         raise ValueError("Legacy v1 checkpoint requires explicit trust_legacy=True")
+    if state["format_version"] == FORMAT_VERSION:
+        state = decode_checkpoint(state, torch.Tensor)
     if state.get("network_config") != asdict(algorithm.model.config):
         raise ValueError("Checkpoint network dimensions/architecture differ from the configured ActorCritic")
     current = asdict(algorithm.config)
