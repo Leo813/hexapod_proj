@@ -9,6 +9,11 @@ your environment, preview unchanged task/configuration/asset copies, explicitly
 apply them, and verify their hashes. This utility does not install Isaac Gym,
 PyTorch or CUDA; native GPU validation remains Stage 4B work.
 
+The [Stage 4B.1 native validation guide](docs/stage4-native-validation.md)
+records historical API compatibility and unresolved runtime requirements. Its
+readiness tool is read-only by default; fresh-process CUDA checks and a bounded
+four-environment smoke test each require explicit authorization flags.
+
 From this repository, after manually installing Isaac Gym Preview 4 and the
 historical IsaacGymEnvs checkout and placing the task/configuration/assets:
 
