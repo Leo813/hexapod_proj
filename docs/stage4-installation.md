@@ -1,5 +1,9 @@
 # Stage 4A: safe task preparation and environment inspection
 
+For current setup instructions and the selected provisional runtime, use
+[Getting started](getting-started.md). This record retains Stage 4A's original
+runtime assumptions, diagnostics and validation results.
+
 Branch: `feat/stage4-safe-installation`. Starting commit:
 `b5dc27a020b82c4c93907a56e6f4c250fbddb1f9` (Stage 3.5B merge).
 The working tree was clean; local `main` and `origin/main` both identified that
