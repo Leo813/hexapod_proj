@@ -28,9 +28,10 @@ PACKAGE_DIRS = ("isaacgymenvs", "isaacgymenvs/tasks", "isaacgymenvs/tasks/base",
 MAPPINGS = (("hexapod.py", "isaacgymenvs/tasks/hexapod.py"),
             ("hexapod.yaml", "isaacgymenvs/cfg/task/hexapod.yaml"),
             ("hexapodPPO.yaml", "isaacgymenvs/cfg/train/hexapodPPO.yaml"))
-COMPATIBILITY = ("Unresolved runtime conflict: project requires torch>=1.13; the provisional "
-                 "Python 3.8 / torch 1.10.x / CUDA 11.x target is not verified. "
-                 "File placement does not resolve this conflict or verify GPU simulation.")
+COMPATIBILITY = ("Provisional target: Python 3.8 / PyTorch 1.13.1 CUDA 11.7 / Isaac Gym Preview 4. "
+                 "The project requires torch>=1.13; native binary compatibility remains unverified. "
+                 "File placement and passing metadata checks do not establish native readiness "
+                 "or validate GPU simulation.")
 
 
 class InstallationError(ValueError):

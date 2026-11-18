@@ -1,5 +1,9 @@
 # Stage 4B.1: native compatibility investigation and validation preparation
 
+For current installation instructions and the selected provisional runtime,
+use [Getting started](getting-started.md). This record preserves Stage 4B.1's
+historical candidates and evidence; it does not report native validation.
+
 Date: 2026-11-18. Branch: `feat/stage4-native-readiness`. Start:
 `bc17da42df3e9f52be413d76b98b047b53a93f0d`, the Stage 4A merge. The working tree
 was clean. Local tracking refs were stale; an authorized fetch obtained the

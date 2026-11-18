@@ -276,7 +276,11 @@ runpy.run_path(sys.argv[0], run_name='__main__')
         self.assertEqual(result.returncode, 0, result.stderr)
         info = json.loads(result.stdout)
         self.assertIn("torch>=1.13", info["compatibility"])
-        self.assertIn("1.10.x", info["compatibility"])
+        for expected in ("Python 3.8", "PyTorch 1.13.1 CUDA 11.7", "Isaac Gym Preview 4",
+                         "native binary compatibility remains unverified",
+                         "passing metadata checks do not establish native readiness"):
+            self.assertIn(expected, info["compatibility"])
+        self.assertNotIn("1.10.x", info["compatibility"])
         self.assertEqual(info["native_validation"], "not performed")
 
     def test_cuda_build_is_read_as_text_not_executed(self):
