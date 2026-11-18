@@ -79,8 +79,8 @@ load of version 2 is accepted. No error causes an unrestricted retry. Only for
 a file whose origin and contents you trust:
 
 ```bash
-python train.py task=hexapod checkpoint=/trusted/run/checkpoints/last.pt trust_legacy_checkpoint=True
-python train.py task=hexapod test=True checkpoint=/trusted/run/checkpoints/best.pt trust_legacy_checkpoint=True
+python train_agent.py checkpoint=/trusted/run/checkpoints/last.pt trust_legacy_checkpoint=True
+python train_agent.py test=True checkpoint=/trusted/run/checkpoints/best.pt trust_legacy_checkpoint=True
 ```
 
 The equivalent API is `load_checkpoint(path, algorithm, trust_legacy=True)` or

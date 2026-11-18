@@ -23,8 +23,12 @@ results do not validate these unpushed Stage 3 changes.
 
 ## Architecture and files
 
+Stage 4C.1 renamed the custom root entry point from `train.py` to
+`train_agent.py`; commands below use its current name. Historical validation
+results in this document retain their original scope.
+
 ```text
-train.py -> launcher -> installed YAML / typed configuration
+train_agent.py -> launcher -> installed YAML / typed configuration
                     -> Isaac Gym initialization BEFORE torch
                     -> installed Anymal10(VecTask), unchanged
                     -> IsaacGymAdapter
@@ -35,7 +39,7 @@ train.py -> launcher -> installed YAML / typed configuration
 
 | Created file | Responsibility |
 | --- | --- |
-| `train.py` | Repository-root command; source path is relative to its own file |
+| `train_agent.py` | Repository-root command; source path is relative to its own file |
 | `src/hexapod_rl/launcher.py` | Application wiring, seed/device checks, run directory, train/resume/evaluate |
 | `src/hexapod_rl/integration/__init__.py` | Import-safe optional integration package |
 | `src/hexapod_rl/integration/configuration.py` | Installation discovery, OmegaConf composition/overrides, typed translation and controls |
@@ -134,7 +138,7 @@ compatible torch build. Simulator packages are not project runtime dependencies.
 The launcher first reads configuration with standard-library/OmegaConf code,
 then imports `isaacgym`, then imports torch and the custom learning components.
 Importing torch first in an interactive process produces an explicit error;
-launch a fresh `python train.py` process instead.
+launch a fresh `python train_agent.py` process instead.
 
 To avoid broad registry/factory imports, the loader establishes process-local
 package paths for `isaacgymenvs` and `isaacgymenvs.tasks` without executing their
@@ -149,13 +153,13 @@ selected checkout, especially if using a different revision.
 
 ## Configuration and commands
 
-Run commands from this repository (or invoke its `train.py` by absolute path):
+Run commands from this repository (or invoke its `train_agent.py` by absolute path):
 
 ```bash
-python train.py task=hexapod
-python train.py task=hexapod headless=True
-python train.py task=hexapod num_envs=64 max_iterations=100
-python train.py task=hexapod isaacgymenvs_path=/opt/IsaacGymEnvs
+python train_agent.py
+python train_agent.py headless=True
+python train_agent.py num_envs=64 max_iterations=100
+python train_agent.py isaacgymenvs_path=/opt/IsaacGymEnvs
 ```
 
 Automatic discovery uses the installed top-level package spec without importing
@@ -212,7 +216,7 @@ CUDA devices, invalid graphics IDs, or contradictory task/root device settings
 fail clearly. A deliberate CPU configuration requires all relevant overrides:
 
 ```bash
-python train.py task=hexapod sim_device=cpu rl_device=cpu pipeline=cpu headless=True
+python train_agent.py sim_device=cpu rl_device=cpu pipeline=cpu headless=True
 ```
 
 That still requires Isaac Gym and is not a simulator-free mode. VecTask handles
@@ -297,7 +301,7 @@ Resume validates the network architecture and every PPO setting before restoring
 learning state. Application limits/logging/save controls can change. For example:
 
 ```bash
-python train.py task=hexapod checkpoint=/path/run/checkpoints/last.pt max_iterations=700
+python train_agent.py checkpoint=/path/run/checkpoints/last.pt max_iterations=700
 ```
 
 Repeat any original PPO overrides, including `num_envs` and minibatch settings.
@@ -316,7 +320,7 @@ restoring CUDA RNG. No uninterrupted-trajectory equivalence is claimed.
 For deterministic evaluation:
 
 ```bash
-python train.py task=hexapod test=True checkpoint=/path/run/checkpoints/best.pt headless=True eval_steps=5000
+python train_agent.py test=True checkpoint=/path/run/checkpoints/best.pt headless=True eval_steps=5000
 ```
 
 Evaluation restores network and normalizers, validates their compatibility, and
@@ -375,7 +379,7 @@ its embedded Python preflight syntax checked, not executed as a GitHub job.
 | IsaacGymEnvs not found | Select the installed checkout with isaacgymenvs_path |
 | Required task/YAML missing | Perform the documented manual file placement; config_path must contain all three YAMLs |
 | Asset directory missing | Copy the unchanged hexapod2 tree to assets/urdf/hexapod2 |
-| Isaac Gym must initialize before torch | Start a fresh process with this repository's train.py |
+| Isaac Gym must initialize before torch | Start a fresh process with this repository's train_agent.py |
 | Namespace already imported | Do not mix the narrow loader with make()/task-registry imports |
 | OmegaConf/torch/matplotlib/TensorBoard import failure | Use the prepared training environment and install required dependencies manually |
 | Invalid minibatch | Choose a divisor of num_envs*horizon; explicit overrides are never silently changed |
@@ -385,7 +389,7 @@ its embedded Python preflight syntax checked, not executed as a GitHub job.
 On a simulator-equipped Linux machine, first run all offline tests, then:
 
 ```bash
-python train.py task=hexapod isaacgymenvs_path=/opt/IsaacGymEnvs headless=True num_envs=8 max_iterations=2 output_dir=runs/stage3-smoke
+python train_agent.py isaacgymenvs_path=/opt/IsaacGymEnvs headless=True num_envs=8 max_iterations=2 output_dir=runs/stage3-smoke
 ```
 
 Confirm the printed minibatch adjustment to 384, two completed epochs and 768
