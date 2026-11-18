@@ -90,12 +90,13 @@ class Block(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] in {'isaacgym', 'isaacgymenvs', 'rl_games', 'torch'}:
             raise AssertionError('forbidden early import: ' + fullname)
 sys.meta_path.insert(0, Block())
-from hexapod_rl.launcher import main
-assert main(['--help']) == 0
+import runpy
+sys.argv = ['train_agent.py', '--help']
 """
-        script = f"import sys; sys.path.insert(0, {str(ROOT / 'src')!r})\n" + script
+        script += f"\nrunpy.run_path({str(ROOT / 'train_agent.py')!r}, run_name='__main__')\n"
         result = subprocess.run([sys.executable, "-B", "-c", script], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('python train_agent.py [key=value ...]', result.stdout)
 
 
 @unittest.skipUnless(HAS_OMEGACONF, "OmegaConf is not installed")
@@ -107,6 +108,33 @@ class ConfigurationCompositionTests(unittest.TestCase):
 
     def load(self, *arguments):
         return load_configuration([f"isaacgymenvs_path={self.temporary.name}", "task=hexapod", *arguments])
+
+    def test_empty_arguments_select_original_task_and_training_yaml(self):
+        with patch('hexapod_rl.integration.configuration.locate_installation',
+                   return_value=(self.package, self.package / 'cfg')) as locate:
+            implicit = load_configuration([])
+            locate.assert_called_once_with(None, None)
+        explicit = self.load()
+        self.assertEqual(implicit.resolved, explicit.resolved)
+        self.assertEqual(implicit.resolved['task']['name'], 'Anymal10')
+        self.assertEqual(implicit.network, explicit.network)
+        self.assertEqual(implicit.ppo, explicit.ppo)
+        self.assertFalse(implicit.resolved['headless'])
+
+    def test_documented_overrides_without_explicit_task(self):
+        checkpoint = Path(self.temporary.name) / 'last.pt'
+        checkpoint.touch()  # Configuration checks existence; no deserialization here.
+        cases = [
+            (['headless=True'], 'headless', True),
+            (['num_envs=64', 'max_iterations=100'], 'num_envs', 64),
+            ([f'checkpoint={checkpoint}', 'max_iterations=700'], 'max_iterations', 700),
+            (['test=True', f'checkpoint={checkpoint}'], 'test', True),
+        ]
+        for arguments, key, expected in cases:
+            with self.subTest(arguments=arguments):
+                app = load_configuration([f'isaacgymenvs_path={self.temporary.name}', *arguments])
+                self.assertEqual(app.resolved[key], expected)
+                self.assertEqual(app.resolved['task']['name'], 'Anymal10')
 
     def test_original_yaml_defaults_and_relative_resolvers(self):
         app = self.load()

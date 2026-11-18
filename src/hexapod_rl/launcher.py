@@ -12,9 +12,9 @@ from .integration.task_factory import construct_task, initialize_isaac_gym
 
 
 HELP = """Custom feedforward hexapod PPO (no RL-Games trainer)
-  python train.py task=hexapod [key=value ...]
-  python train.py task=hexapod headless=True num_envs=64 max_iterations=100
-  python train.py task=hexapod test=True checkpoint=/path/custom.pt eval_steps=1000
+  python train_agent.py [key=value ...]
+  python train_agent.py headless=True num_envs=64 max_iterations=100
+  python train_agent.py test=True checkpoint=/path/custom.pt eval_steps=1000
 
 Paths: isaacgymenvs_path=/absolute/IsaacGymEnvs [config_path=/absolute/cfg]
 Devices: sim_device=cuda:0 rl_device=cuda:0 pipeline=gpu graphics_device_id=0

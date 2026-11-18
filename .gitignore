@@ -23,3 +23,18 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Training outputs
+runs/
+
+# TensorBoard event files
+events.out.tfevents.*
+
+# Python package build artifacts
+build/
+dist/
+*.egg-info/
+
+# Additional development caches
+.mypy_cache/
+.ruff_cache/

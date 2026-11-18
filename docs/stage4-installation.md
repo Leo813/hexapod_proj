@@ -211,7 +211,7 @@ After file verification and separately approved native compatibility work, the
 existing launcher can be used without changes:
 
 ```bash
-python train.py task=hexapod isaacgymenvs_path=/absolute/path/to/IsaacGymEnvs headless=True
+python train_agent.py isaacgymenvs_path=/absolute/path/to/IsaacGymEnvs headless=True
 ```
 
 The intended baseline is `pipeline=gpu sim_device=cuda:0 rl_device=cuda:0`

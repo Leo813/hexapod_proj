@@ -9,7 +9,7 @@ import sys
 
 def initialize_isaac_gym():
     if "torch" in sys.modules and "isaacgym" not in sys.modules:
-        raise RuntimeError("Isaac Gym must initialize before torch. Start a fresh process with python train.py")
+        raise RuntimeError("Isaac Gym must initialize before torch. Start a fresh process with python train_agent.py")
     try:
         return importlib.import_module("isaacgym")
     except ImportError as error:

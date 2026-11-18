@@ -18,13 +18,15 @@ From this repository, after manually installing Isaac Gym Preview 4 and the
 historical IsaacGymEnvs checkout and placing the task/configuration/assets:
 
 ```bash
-python train.py task=hexapod
-python train.py task=hexapod headless=True num_envs=64 max_iterations=100
+python train_agent.py
+python train_agent.py headless=True num_envs=64 max_iterations=100
 ```
 
 Use `isaacgymenvs_path=/absolute/path/to/IsaacGymEnvs` when automatic discovery
-is insufficient. Run `python train.py --help` for supported overrides. Our
-launcher loads `Anymal10` directly; **no task-registry edit is required**. The
+is insufficient. Run `python train_agent.py --help` for supported overrides. Our
+launcher selects `hexapod` / `hexapodPPO` by default and loads `Anymal10` directly;
+**no task-registry edit is required**.
+`task=hexapod` remains accepted; unsupported tasks are rejected. The
 original registry-based instructions apply only to the historical RL-Games
 launcher, which this command does not use.
 
@@ -43,8 +45,8 @@ The [baseline contract](docs/baseline-contract.md),
 Evaluate or resume a **custom** checkpoint:
 
 ```bash
-python train.py task=hexapod test=True checkpoint=/path/run/checkpoints/last.pt headless=True
-python train.py task=hexapod checkpoint=/path/run/checkpoints/last.pt max_iterations=700
+python train_agent.py test=True checkpoint=/path/run/checkpoints/last.pt headless=True
+python train_agent.py checkpoint=/path/run/checkpoints/last.pt max_iterations=700
 ```
 
 Resume restores learning state and starts fresh simulator episodes. Historical
