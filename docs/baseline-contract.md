@@ -1,6 +1,6 @@
 # Hexapod executable baseline
 
-Stage 1, 2026-11-12. The original environment, YAML files, URDF, and meshes are
+The original environment, YAML files, URDF, and meshes are
 unchanged. This contract records behavior, including suspected defects; it does
 not authorize fixes. The research paper is background, not an implementation
 override. Reproducing the paper's complete experimental curriculum is a different
@@ -16,15 +16,16 @@ Evidence labels used here and in [the reference specification](reference-impleme
 
 ## Scope and dependencies
 
-**Local:** `README.md` describes installing this task in an external IsaacGymEnvs
-tree and registering it in that tree's task mapping. There is no original local
-trainer, framework checkout, dependency lockfile, or reference checkpoint.
+**Local:** the custom launcher loads the installed task directly from an external
+IsaacGymEnvs checkout, without a task-registry edit. The original framework
+checkout, environment lockfile and reference checkpoint are not bundled. See
+[Getting started](getting-started.md) for installation and discovery.
 
 `hexapod.py` defines `Anymal10(VecTask)`. Isaac Gym owns physics, asset import,
 actors, sensors, terrain, and simulator tensors. IsaacGymEnvs supplies `VecTask`
 and training integration. RL-Games supplies the original model, PPO, buffers,
 normalizers, optimizer, schedule, and checkpoints. PyTorch implements local
-tensor calculations and the new independent network.
+tensor calculations and the independent network/PPO implementation.
 
 The original module imports NumPy, torch, Isaac Gym, IsaacGymEnvs, TensorBoard,
 and matplotlib. A module-level `SummaryWriter()` can create output at import.
@@ -37,7 +38,7 @@ The original Python, PyTorch, CUDA, driver, and exact framework revisions remain
 unverified. **Independent package:** Python >=3.8, torch >=1.13 as a declared
 development compatibility floor, standard-library unittest, CPU or native torch
 device transfer. This is not an original-environment version pin. No Ubuntu
-requirement applies to independent network tests. See [test report](stage1-tests.md).
+requirement applies to independent network tests. See [testing status](../README.md#testing-status).
 
 ## Environment interface
 
@@ -54,7 +55,7 @@ and `extras['time_outs']` is [N]. Observations and results are moved to
 `rl_device`. Reset buffers are allocated as long tensors, timeout flags are
 computed by a Boolean expression, and observations/rewards are floating tensors.
 No privileged state space is configured locally. The original `RLGPUEnv` is a
-delegating RL-Games adapter, not needed by the Stage 1 package.
+delegating RL-Games adapter, not used by the custom application.
 
 `VecTask.reset()` returns the current clipped observation buffer without
 computing new observations. The local constructor resets state but never calls
@@ -63,8 +64,8 @@ first returned observations are zeros. This is a source-derived reconstruction,
 not simulator verification. Do not add an eager observation/physics step casually.
 
 **Reference:** `IsaacGymEnvs.make()` imports `rlgames_utils`, which imports
-RL-Games. Future integration must avoid that convenience factory/adapter to
-remove the backend dependency while retaining the task and `VecTask`.
+RL-Games. The custom task loader avoids that convenience factory/adapter while
+retaining the installed task and `VecTask`.
 
 ## Observations
 
@@ -90,8 +91,8 @@ when this observation is used to choose the next action.
 **Local + Reference:** preprocessing order is task feature scaling, then
 `VecTask` clipping to [-5,5], then the RL-Games model's running input
 normalization/clipping. Thus the fixed forward command's feature 8 becomes 5
-before running normalization. Stage 1 implements neither clipping nor running
-statistics; callers will supply prepared observations once Stage 2 exists.
+before running normalization. The custom adapter retains VecTask clipping and
+PPO applies running normalization; the neural network itself expects prepared inputs.
 
 ## Actions and controls
 
@@ -120,7 +121,7 @@ densities in owned rollout tensors, then clamps actions to [-1,1] and rescales
 to the environment limits. For these limits, rescaling is an identity. `VecTask`
 clamps again before calling the task; both clamps are out-of-place. Consequently
 the task's input mutation does not alter original stored policy actions in this
-selected path. The future collector must preserve this distinction. Do not
+selected path. The custom collector preserves this distinction. Do not
 evaluate likelihoods on clipped or coupled actions.
 
 ## Reward
@@ -194,7 +195,8 @@ created actor name `anymal`; enabling it is separate work.
 joints, and two fixed joints. All mimic declarations and six mimic links are
 commented out; their six meshes and ROS joint names remain. There are 25 STL
 files, of which 19 distinct files are referenced by active XML. Mesh references
-use `package://test_spider6/`. Every active reference exists in this checkout.
+use `package://test_spider6/`. Every referenced mesh filename exists in this
+checkout; native package-URI resolution remains unverified.
 
 The task loads `../../assets/urdf/hexapod2/urdf/test_spider6.urdf` relative to its
 installed task location, not this repository's `hexapod2/` directly. Fixed joints
@@ -242,13 +244,38 @@ Default rollout is exactly one minibatch, with five updates. Relative YAML
 interpolations require an enclosing configuration and resolvers `resolve_default`,
 `eq`, `contains`, `if`; these are registered in the selected IsaacGymEnvs
 `__init__.py`. Seed, devices, experiment, checkpoint, and multi-GPU settings
-are inherited. Stage 1's typed network config does not resolve these files or
-pretend to implement training configuration.
+are inherited. The custom OmegaConf loader explicitly composes the installed
+root/task/train YAMLs and registers these resolvers without importing the broad
+IsaacGymEnvs initializer. The typed network config alone does not compose YAML.
 
 LSTM is deferred: one 256-unit layer before the MLP, concat_input=True,
 seq_len=4, horizon=24, minibatch=1024, entropy=0.001, bounds coefficient=0,
 clip_actions=False, max epochs=1200, best-after=100. Environment clipping still
 applies even when the trainer's action clipping is disabled.
+
+## Configuration validation boundaries
+
+The custom launcher reports notices for non-baseline values of settings that
+the preserved task does not honor as their YAML names suggest:
+
+| Field under `task.env` | Executable behavior |
+| --- | --- |
+| `envSpacing` | Hard-coded 1.0 |
+| `control.controlFrequencyInv` | VecTask reads the top-level `env.controlFrequencyInv` instead |
+| `urdfAsset.collapseFixedJoints`, `fixBaseLink`, `defaultDofDriveMode` | Always collapsed fixed joints, free base, position drives |
+| `baseInitState.rot`, `vLinear`, `vAngular` | Not applied to initial actor/reset snapshots |
+| `randomCommandVelocityRanges.*` | Sampled commands are overwritten |
+| `learn.linearVelocityXYRewardScale`, `angularVelocityZRewardScale` | Active coefficients are hard-coded |
+
+Notices do not implement or remap those fields. Default joint angles still
+affect randomized reset state; target reset remains hard-coded. The historical
+`reward_shaper.scale_value` is canonical; an additional `reward_scale` alias
+must be numeric and equal or translation fails.
+
+`clipActions` and `clipObservations` must be nonnegative numeric values, excluding
+booleans and NaN. Zero and positive infinity are allowed; omission uses VecTask's
+infinity default. Adapter action clipping to [-1,1] still precedes VecTask clipping,
+and observation clipping remains separate from running normalization.
 
 ## Paper discrepancies
 

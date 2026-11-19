@@ -23,7 +23,7 @@ Resume: checkpoint=/path/custom.pt max_iterations=700
 Trusted files ONLY (legacy v1/v2 or old torch): trust_legacy_checkpoint=True (permits pickle code execution)
 Other overrides: existing task.* / train.* YAML leaves, seed, torch_deterministic,
 headless, experiment, force_render. No Hydra sweeps, +key, LSTM, or multi-GPU.
-See docs/stage3-integration.md for manual installation and validation limits.
+See docs/getting-started.md for manual installation and validation limits.
 """
 
 

@@ -1,11 +1,11 @@
-# Historical reference and Stage 1 mapping
+# Historical references and implementation mapping
 
 ## Evidence and revision selection
 
 **Local** means checked-in project evidence; **Reference** means inspected
 historical source; **Unverified** means not established by that evidence or not
 executed. See [baseline contract](baseline-contract.md) for local behavior and
-[validation report](stage1-tests.md) for what actually ran.
+[testing status](../README.md#testing-status) for the validation policy.
 
 | Component | Selected revision | Status |
 | --- | --- | --- |
@@ -28,8 +28,8 @@ Revision evidence: [RL-Games tag API](https://api.github.com/repos/Denys88/rl_ga
 [IsaacGymEnvs setup](https://github.com/isaac-sim/IsaacGymEnvs/blob/aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3/setup.py),
 [Preview 4 requirement](https://github.com/isaac-sim/IsaacGymEnvs/blob/aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3/README.md).
 
-Public source files were downloaded only into a temporary inspection directory.
-None were installed or vendored. The new implementation independently expresses
+Upstream modules are not vendored or imported by the learning package. The
+independent implementation expresses
 the network structure and equations with native torch. RL-Games' setup declares
 MIT licensing; its authors are Denys Makoviichuk and Viktor Makoviichuk.
 
@@ -98,8 +98,8 @@ The builder broadcasts it using a zero multiple of the means plus the parameter.
 activation, and initial log_std; its defaults match local YAML. ActorCritic
 constructs actor hidden layers, critic hidden layers, value head, then mean head;
 the global log_std is a trainable vector. Configurable alternative widths or
-activations are experiments, not claims of baseline parity. YAML/Hydra loading
-is not implemented in Stage 1.
+activations are experiments, not claims of baseline parity. YAML composition
+belongs to the application configuration loader, not this network API.
 
 Same-seed bitwise initialization against the complete upstream builder is not
 claimed: upstream's shape probing consumes an additional random observation
@@ -159,13 +159,13 @@ clip_actions=True) and the environment. Raw actions are stored before clipping.
 The independent network intentionally implements neither clipping/rescaling
 nor six-joint coupling. All 18 terms remain in likelihood and entropy.
 
-**Stage boundary:** the upstream BaseModelNetwork wraps the network with
-observation normalization and rollout value denormalization. Stage 1 supplies
-only the neural/distribution core. Therefore direct raw observations and values
-do not reproduce a trained upstream model with its running statistics. Later
-code must normalize observations and interpret value units explicitly.
+**API boundary:** the upstream BaseModelNetwork wraps the network with
+observation normalization and rollout value denormalization. The independent
+PPO component supplies these around the neural/distribution core. Direct network
+calls alone do not reproduce a trained model with running statistics; see
+[normalization and target preparation](ppo-implementation.md#normalization-and-target-preparation).
 
-## Trainer defaults verified for later stages (not implemented)
+## Trainer reference behavior
 
 The local PPO YAML is authoritative for explicit settings. Source inspection
 establishes the following inherited behavior for the selected single-device,
@@ -218,7 +218,8 @@ feedforward path:
   calculated afterward. Do not substitute a generic old-to-new analytic KL or
   introduce KL early stopping.
 
-These are specifications for Stage 2 review, not working training features.
+The independent implementation follows these contracts; equations, data flow
+and persistence are described in [PPO implementation](ppo-implementation.md).
 
 ## Remaining uncertainty and validation boundaries
 
@@ -229,15 +230,13 @@ These are specifications for Stage 2 review, not working training features.
 - No RL-Games model was instantiated for differential execution; evidence is
   source inspection and independent mathematical fixtures, not an executed
   upstream equivalence test.
-- Torch numerical tests could not run in the current environment because torch
-  is absent. Static checks are not evidence of gradient or performance parity.
-- No normalization, optimizer, scheduler, rollout, GAE, checkpoint manager,
-  LSTM, multi-GPU trainer, or simulator adapter exists in Stage 1.
+- Static checks are not evidence of gradient or performance parity; full
+  numerical validation requires the strict CPU suite with no skips.
+- LSTM, multi-GPU training and original RL-Games checkpoint conversion are not
+  implemented. Custom checkpoints have their own versioned format.
 - No claim of identical learning curves, exact RNG stream parity with upstream,
   complete simulator compatibility, or original checkpoint loading is made.
 
-Stage 2 should first implement tests for normalization timing/units and timeout
-semantics, then owned rollout storage and GAE, then the verified PPO losses,
-Adam/AMP gradient handling, and legacy adaptive schedule. Use deterministic
-fixtures and mocked vector environments before attempting live simulation.
-Proceed only after explicit approval.
+Deterministic fixtures and mocked vector environments cover the independent
+components. Native diagnostics and their limits are documented in
+[Getting started](getting-started.md#native-diagnostics).

@@ -2,7 +2,8 @@
 
 This is the current installation guide for the independent PyTorch PPO
 application. It keeps the original hexapod task, physics, assets and YAML
-settings. Stage-specific documents remain historical development records.
+settings. Technical details are in the [PPO implementation](ppo-implementation.md)
+and [executable baseline](baseline-contract.md).
 
 The steps below are instructions for your Linux training machine. Native
 Isaac Gym/CUDA execution of this application remains **unverified**; offline
@@ -149,6 +150,13 @@ identical files. A conflicting file blocks installation; there is no force
 overwrite. Inspect conflicts and deliberately resolve them or use a fresh
 checkout, then preview again. The filesystem must support hard links.
 
+Publication is atomic per file, not for the complete installation. An I/O
+failure can leave verified new files and empty directories; preview again
+before retrying. Use a trusted checkout that is not being changed concurrently.
+Revision mismatches are warnings, not proof of incompatibility; verification
+checks file contents, not native runtime compatibility. CLI syntax errors exit
+2, installation/verification failures exit 1, and successful operations exit 0.
+
 The manifest contains 35 files: three task/configuration files plus the entire
 32-file `hexapod2` tree, including 25 STL meshes. The utility installs task files
 only; it does not install Python packages or the simulator.
@@ -274,6 +282,26 @@ forward motion. Box-position reward terms and box-fall termination checks are
 inactive. It does not implement the paper's full curriculum or establish
 successful object balancing. See the [baseline contract](baseline-contract.md).
 
+### Additional configuration
+
+For other supported settings, run `--help`. The loader accepts `key=value`
+overrides of existing supported YAML leaves, not Hydra sweeps or `+key` syntax.
+Examples include `seed=42`, `torch_deterministic=True`, `force_render=False`,
+`experiment=my_run`, and `train.params.config.learning_rate=0.0001` (a changed
+experiment). Unknown/duplicate keys, alternate tasks, LSTM, multi-GPU, video,
+W&B and framework domain randomization are rejected.
+
+Configuration precedence is CLI > root YAML > absent-key defaults. The latter
+are `output_dir=""`, `eval_steps=1000`, `tensorboard=False`, and
+`trust_legacy_checkpoint=False`. `config_path=/absolute/custom/cfg` can select
+a directory containing `config.yaml`, `task/hexapod.yaml` and
+`train/hexapodPPO.yaml`. The loader preserves their relative interpolation;
+Hydra does not change the working directory. Explicit relative launch paths
+are interpreted from that directory. A specified minibatch override always
+wins over the smaller-environment convenience adjustment and must divide the
+rollout size. Devices must be `cpu` or `cuda:<index>`; GPU pipeline requires a
+CUDA simulator device. CPU simulation still requires Isaac Gym.
+
 ## 8. Outputs and resuming training
 
 By default, outputs are relative to the launch working directory:
@@ -347,7 +375,7 @@ automatically falls back to unrestricted deserialization. For a genuinely
 trusted legacy custom checkpoint only, `trust_legacy_checkpoint=True` permits
 unrestricted pickle loading, which can execute code. Do not enable it simply
 to bypass an unexplained load error. See the
-[checkpoint compatibility record](stage3-audit-corrections.md).
+[checkpoint format and restoration](ppo-implementation.md#checkpoint-format-and-restoration).
 
 ## 10. Troubleshooting
 
@@ -365,22 +393,98 @@ to bypass an unexplained load error. See the
 | Mesh resolution / body or sensor mismatch | Retain the supplied layout; capture native importer diagnostics for review before changing assets or task code. |
 | Resume rejects PPO settings | Repeat the original overrides; inspect `resolved-config.json`. Increasing the total epoch limit is allowed. |
 | No checkpoint after interruption | Inspect the actual files; the save gates above may not have produced one. |
-| Old torch 1.10.x notices in stage records/readiness output | Those describe the earlier candidate; this guide records the current provisional target. They do not certify native compatibility. |
+| Old torch 1.10.x notice in readiness output | This retained diagnostic notice describes an earlier candidate; the runtime table above is the current provisional target. Metadata notices do not certify native compatibility. |
+
+## Native diagnostics
+
+These retained tools inspect the selected environment and optionally run bounded
+native checks. They do not install dependencies or repair an external checkout.
+Use the Python interpreter of the environment being investigated.
+
+Read-only inventory, without importing torch or Isaac Gym:
+
+```bash
+python -B scripts/check_native_readiness.py --isaacgymenvs /opt/IsaacGymEnvs --isaacgym-sdk /opt/isaacgym
+```
+
+Replace the absolute paths with your installations. The optional SDK path reads
+bundled setup/Conda/documentation evidence as text, not executable instructions.
+The report includes package/device metadata and task-file hashes. Without a
+selected checkout it reports an installation-verification blocker. Neither
+inventory mode nor the installer's `--inspect-environment` writes files or
+performs tensor operations. Add `--driver-info` only to request a read-only
+`nvidia-smi` inventory. Metadata exit 0 means no detected blockers, not proven
+native compatibility; exit 1 reports blockers/failure and invalid syntax exits 2.
+
+On the prepared GPU machine, explicitly request a fresh-process import/CUDA check:
+
+```bash
+python -B scripts/check_native_readiness.py --isaacgymenvs /opt/IsaacGymEnvs --check-imports --device cuda:0 --timeout 60
+```
+
+This imports Isaac Gym before torch, checks the selected visible CUDA device,
+and squares/sums eight float32 values (expected result 140), then synchronizes.
+It constructs no simulation. Device indices follow `CUDA_VISIBLE_DEVICES`.
+Errors identify the failed import/device/operation or subprocess stage; a
+successful probe can still exit 1 when metadata blockers remain. SDK imports
+may initialize native libraries and use extension caches. Passing this check
+does not establish PhysX, asset or training compatibility.
+
+After resolving blockers and reviewing import results, a separate flag starts
+the bounded native training diagnostic:
+
+```bash
+# /data/hexapod-validation must exist; smoke-001 must not exist.
+python -B scripts/check_native_readiness.py \
+  --isaacgymenvs /opt/IsaacGymEnvs \
+  --run-smoke --device cuda:0 \
+  --output /data/hexapod-validation/smoke-001 --timeout 180
+```
+
+The output must be a new absolute directory outside both checkouts, with an
+existing parent. The worker runs there, including the original task's writer.
+Use this wrapper; `scripts/native_smoke.py` is its worker implementation, not a
+standalone launcher. Active flags are not enabled by default or by CPU CI.
+
+The diagnostic uses four environments, one epoch, GPU PhysX/pipeline, headless
+mode and no viewer graphics device. The unchanged horizon 48 and five
+mini-epochs give a minibatch of 192 via the existing adjustment. This is not
+the 256-environment experiment. It checks tensor shapes/devices, sensor/step
+finiteness, native joint/body names, optimizer state and changed finite model
+parameters, then compares a restricted same-device checkpoint restoration on
+a fresh PPO instance. It does not create another simulator or execute a resumed
+update/evaluation after loading. Terrain/contact allocation can still be costly.
+
+Artifacts include `readiness.json`, completed-worker `native-stdout.log` and
+`native-stderr.log`, `resolved-config.json`, `smoke-evidence.json`,
+`checkpoints/last.pt`, and task `runs/` output. Early failures may omit files;
+timeout output tails remain in the readiness report. Timeout must be 1..600
+seconds. A timeout kill can prevent graceful native cleanup; inspect the report
+and use a fresh output directory for a deliberate retry.
+
+Snapshots bracket reset, observation and action methods without adding resets
+or setters. CPU snapshot copies synchronize CUDA and can alter timing; they
+do not prove asynchronous correctness. Constructor resets precede instrumentation.
+If no natural termination occurs, episode/reset coverage remains incomplete.
+Body index 5 and contact indices must still be reviewed against intended links;
+successful sensor creation does not prove correct scientific placement.
+
+Retain tracebacks, version inventory, hashes and measured names/values for review.
+Do not change physics or assets simply to make a diagnostic pass. Same-device
+next-update equivalence, CPU-to-CUDA AMP transitions, evaluation and additional
+natural resets need separate native checks before a full baseline experiment.
 
 ## Validation boundaries and further reading
 
 The strict [CPU workflow](../.github/workflows/pytorch-tests.yml) requires at
 least 209 tests, all executed, with no failures, errors or skips. Local tests
 may skip when dependencies are absent; those results are not full CI success.
-The [README testing status](../README.md#testing-status) records the local scope.
+See [README testing status](../README.md#testing-status) for the workflow and test commands.
 
 Native SDK/PyTorch binary compatibility, mesh URI resolution, rigid-body and
 sensor ordering, GPU reset behavior and CUDA checkpoint restoration still
 require execution on the target machine. No successful native training or
 paper-result reproduction is claimed.
 
-For detailed historical evidence, see [safe installation](stage4-installation.md),
-[native validation preparation](stage4-native-validation.md), and
-[reference implementations](reference-implementation.md). Older runtime tables
-and test counts describe their original stages; this guide is the current
-installation entry point.
+For technical contracts and attribution, see the [executable baseline](baseline-contract.md),
+[PPO implementation](ppo-implementation.md) and [reference mapping](reference-implementation.md).

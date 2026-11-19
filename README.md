@@ -129,7 +129,7 @@ supported. See [evaluation and checkpoint trust](docs/getting-started.md#9-evalu
 | `scripts/install_hexapod_task.py` | Prepare unchanged task/configuration/asset files |
 | `scripts/check_native_readiness.py` | Inventory and explicitly requested native diagnostics |
 | `tests/`, `ci/` | Offline tests and strict test runner |
-| `docs/` | Current guide, baseline contracts and historical stage records |
+| `docs/` | Installation guide, baseline contracts, PPO details and upstream references |
 
 ## Testing status
 
@@ -139,11 +139,9 @@ strict runner requires at least **209 tests**, complete execution and zero
 failures, errors or skips. View actual run outcomes in the repository's
 [Actions tab](https://github.com/Leo813/hexapod_proj/actions).
 
-The final offline audit and Stage 4C.2 local validation found **209 tests: 86
-passed and 123 skipped** because PyTorch or OmegaConf was unavailable, with
-zero failures/errors across the split local runs. All nine separate CI-runner
-tests passed. These local results do not establish numerical CI success or
-native GPU compatibility. Earlier stage reports retain their original results.
+Local runs may skip tests when PyTorch or OmegaConf is unavailable; such runs
+do not establish full numerical validation. Consult the Actions results for
+the revision being used. CPU validation does not establish native GPU compatibility.
 
 In a prepared CPU test environment:
 
@@ -164,9 +162,8 @@ sensor ordering, CUDA checkpoint restoration or equivalent learning curves.
   and [IsaacGymEnvs](https://github.com/isaac-sim/IsaacGymEnvs/tree/aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3);
   the original task was adapted from the ANYmal example.
 - [RL-Games v1.6.0 reference mapping](docs/reference-implementation.md)
-  and [independent PPO implementation notes](docs/stage2-implementation.md).
-- Historical [task installation](docs/stage4-installation.md) and
-  [native validation preparation](docs/stage4-native-validation.md) records.
+  and [independent PPO implementation notes](docs/ppo-implementation.md).
+- [Task installation and native diagnostics](docs/getting-started.md).
 
 Existing source copyright notices and upstream terms remain applicable; this
 page does not introduce a new repository license.

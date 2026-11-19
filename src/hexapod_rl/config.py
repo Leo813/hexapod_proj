@@ -33,7 +33,7 @@ class PPOConfig:
     """Single-device feedforward PPO; names match YAML where possible.
 
     Hydra resolution, environment creation, and experiment/checkpoint settings
-    remain outside this configuration. See docs/stage2-implementation.md.
+    remain outside this configuration. See docs/ppo-implementation.md.
     """
 
     num_actors: int = 256

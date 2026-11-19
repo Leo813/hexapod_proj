@@ -75,7 +75,7 @@ def locate_installation(explicit=None, config_path=None):
                 cfg / "config.yaml", cfg / "task/hexapod.yaml", cfg / "train/hexapodPPO.yaml")
     for path in required:
         if not path.is_file():
-            raise FileNotFoundError(f"Required file missing: {path}. Follow the manual placement in docs/stage3-integration.md")
+            raise FileNotFoundError(f"Required file missing: {path}. Follow the manual placement in docs/getting-started.md")
     return package, cfg
 
 
