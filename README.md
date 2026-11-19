@@ -165,5 +165,12 @@ sensor ordering, CUDA checkpoint restoration or equivalent learning curves.
   and [independent PPO implementation notes](docs/ppo-implementation.md).
 - [Task installation and native diagnostics](docs/getting-started.md).
 
-Existing source copyright notices and upstream terms remain applicable; this
-page does not introduce a new repository license.
+## License
+
+The independently developed software, including the custom PyTorch PPO
+implementation, is provided under the [MIT License](LICENSE), to the extent
+the repository owner holds the necessary rights. Third-party code, robot assets
+and research materials may have separate terms; see
+[Third-party notices](THIRD_PARTY_NOTICES.md). Existing copyright notices remain
+applicable, and the root MIT License does not grant rights over robot assets
+whose licensing remains uncertain.
