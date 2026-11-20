@@ -6,7 +6,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from run_stage1_tests import MINIMUM_TESTS, main, run_suite
+from run_tests import MINIMUM_TESTS, main, run_suite
 
 
 class RunnerTests(unittest.TestCase):

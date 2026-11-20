@@ -40,20 +40,12 @@ and the external IsaacGymEnvs installation remain subject to their respective
 terms. This repository does not bundle the complete Isaac Gym SDK. The root
 MIT License does not license these external dependencies.
 
-## RL-Games reference
-
-[RL-Games](https://github.com/Denys88/rl_games), by Denys Makoviichuk and Viktor
-Makoviichuk, is a historical implementation reference for the independent PPO
-implementation. It is not the custom training backend, and its package is not
-bundled. The [reference mapping](docs/reference-implementation.md) preserves
-upstream attribution and pinned source links; this acknowledgement does not
-assert that RL-Games source files were copied into the custom package.
-
 ## Research paper
 
 Yu-Hao Tsai, Saeed Saeedvand and Jacky Baltes authored
-[A Deep Reinforcement Learning Algorithm for Objects Balance Control with Hexapod Robot](Paper_yuhaotsai.pdf),
-included in this repository. The paper retains its original author attribution
+[A Deep Reinforcement Learning Algorithm for Objects Balance Control with Hexapod Robot](https://ieeexplore.ieee.org/document/11093566),
+published in the 2025 10th International Conference on Control and Robotics
+Engineering (ICCRE). The paper retains its original author attribution
 and is not placed under the root MIT software license. No Creative Commons
 license is introduced; any applicable rights and publication terms remain with
 their respective holders.

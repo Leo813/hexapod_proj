@@ -1,4 +1,4 @@
-name: Stage 1 to 3 PyTorch validation
+name: PyTorch CPU Tests
 
 on:
   pull_request:
@@ -35,7 +35,7 @@ jobs:
           python-version: '3.10'
           architecture: x64
 
-      - name: Install historical CPU dependencies
+      - name: Install CPU test dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install numpy==1.24.4 omegaconf==2.3.0
@@ -82,5 +82,5 @@ jobs:
       - name: Test CI failure detection
         run: python -B -m unittest discover -s ci -p 'test_*.py' -v
 
-      - name: Run all Stage 1 to 3 tests with no skips
-        run: python -B ci/run_stage1_tests.py
+      - name: Run all CPU tests with no skips
+        run: python -B ci/run_tests.py

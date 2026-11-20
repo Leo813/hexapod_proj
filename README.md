@@ -1,176 +1,189 @@
-# Hexapod locomotion with independent PyTorch PPO
+# Deep Reinforcement Learning for Hexapod Robot Control
 
-## Project overview
+## Overview
 
-This repository combines the original Isaac Gym hexapod environment with an
-independent PyTorch PPO training application. It retains the robot assets,
-physics, observations, rewards and task YAMLs while replacing the RL-Games
-learning backend.
+An academic codebase for hexapod locomotion and object transportation using
+**NVIDIA Isaac Gym** and **Proximal Policy Optimization (PPO)**. The research
+investigates how a hexapod robot can carry objects across terrain while
+following locomotion commands. This repository provides the preserved
+simulation task, robot assets, and associated training implementation.
 
-**Start with the [installation and training guide](docs/getting-started.md).**
-Native Isaac Gym/GPU execution of the custom application remains unverified;
-successful training and reproduction of the research results are not claimed.
+The research is presented in **A Deep Reinforcement Learning Algorithm for
+Objects Balance Control with Hexapod Robot**, by Yu-Hao Tsai, Saeed Saeedvand,
+and Jacky Baltes, published at **ICCRE 2025**.
 
-## Original research objective
+To check out the paper:
+**[Paper (IEEE Xplore)](https://ieeexplore.ieee.org/document/11093566)** ·
 
-The research investigates command-following locomotion and transporting objects
-on uneven terrain with a hexapod robot. See
-[the paper](Paper_yuhaotsai.pdf) and the original
-[demonstration video](https://drive.google.com/file/d/1CU9ajgWKnAI1ainfM-g37qSE5lLipkwa/view?usp=sharing).
-The demonstration predates the independent PPO implementation.
+To see further information about the installation:
+**[Getting started](docs/getting-started.md)**
 
-The preserved executable task includes rough terrain and three boxes, but fixes
-commands to forward motion and leaves box-position reward terms and box-fall
-termination checks inactive. It does not implement every curriculum and
-payload-balancing objective described in the paper. The
-[baseline contract](docs/baseline-contract.md) records the implementation baseline.
+<p align="center">
+  <img src="images/hexapod_with_boxes.png" alt="Hexapod robot supporting stacked boxes on its platform in Isaac Gym" width="680">
+  <br>
+  <em>Hexapod robot carrying stacked objects in simulation.</em>
+</p>
 
-## Independent PyTorch PPO
+The screenshots illustrate the original research, not a newly verified run
+of the current application.
 
-The custom actor-critic, Gaussian policy, normalization, PPO updates, rollout
-collection and checkpoint handling are implemented with PyTorch. Their behavior
-uses RL-Games v1.6.0 as a historical reference; RL-Games is not the custom
-training backend. Isaac Gym and the selected IsaacGymEnvs `VecTask` still supply
-the simulation environment. No IsaacGymEnvs task-registry edit is required.
+## Simulation Environment
 
-## Features
+NVIDIA Isaac Gym enables GPU-based parallel simulation for reinforcement
+learning. The hexapod task includes terrain and carried objects, with a PPO
+policy implemented in PyTorch. Simulation uses Isaac Gym Preview 4 and an
+external IsaacGymEnvs checkout.
 
-- Feedforward PPO with separate actor and critic MLPs (512-256-128, ELU).
-- Original 104 observations, 18 policy actions and task-side mimic-joint coupling.
-- GPU simulation and GPU learning, with 256 environments by default.
-- Custom checkpoint saving/resume and deterministic evaluation.
-- Task-file installation preview, conflict protection and hash verification.
-- Offline tests using CPU fixtures without Isaac Gym or RL-Games.
-
-## Requirements
-
-The provisional native target is **Ubuntu 20.04, Python 3.8, PyTorch 1.13.1
-with CUDA 11.7, and Isaac Gym Preview 4**, using IsaacGymEnvs revision
-`aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3`. This exact combination has not been
-validated natively. Install the SDK separately using its own instructions.
-
-The original task also requires matplotlib, TensorBoard and SDK helper
-dependencies; configuration uses OmegaConf. Python 3.8-compatible editable build
-tooling is required. The [guide](docs/getting-started.md) explains the full
-prerequisites, legacy NumPy concerns and how to preserve an existing CUDA stack.
-The CPU CI dependency versions are a separate software-validation environment.
+<p align="center">
+  <img src="images/isaac_train_hexapod.png" alt="Many hexapod robots with stacked boxes in parallel Isaac Gym environments" width="800">
+  <br>
+  <em>Parallel hexapod training environments in NVIDIA Isaac Gym.</em>
+</p>
 
 ## Installation
 
-Follow [Getting started](docs/getting-started.md) to prepare the historical
-external checkout, clone this project, install the task automatically or by
-manual copying, and install both Python packages separately without replacing
-PyTorch. The guide includes file verification and external package discovery.
-Keep the existing IsaacGymEnvs root configuration and the entire asset tree.
+**Follow the [installation and training guide](docs/getting-started.md)** for
+the full prerequisites, compatibility notes, and troubleshooting. The workflow
+below summarizes its installation procedure for a new Linux workspace.
+
+1. **Prepare Isaac Gym Preview 4 and its Python environment.** Follow the SDK's
+   bundled instructions and the guide's [runtime prerequisites](docs/getting-started.md#1-prerequisites-and-the-provisional-runtime).
+   The provisional target is Ubuntu 20.04, Python 3.8, and PyTorch 1.13.1 with
+   CUDA 11.7. Native execution of the current application with this combination
+   remains unverified.
+
+2. **Prepare the compatible external IsaacGymEnvs checkout.** Use revision
+   `aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3`. After satisfying the guide's
+   runtime and Python 3.8-compatible build prerequisites:
+
+   ```bash
+   mkdir -p "$HOME/hexapod-work"
+   cd "$HOME/hexapod-work"
+   git clone https://github.com/isaac-sim/IsaacGymEnvs.git
+   git -C IsaacGymEnvs checkout aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3
+   python -m pip install --no-deps --no-build-isolation --editable "$HOME/hexapod-work/IsaacGymEnvs"
+   ```
+
+3. **Clone this repository.** Run the remaining commands from its root:
+
+   ```bash
+   cd "$HOME/hexapod-work"
+   git clone https://github.com/Leo813/hexapod_proj.git
+   cd hexapod_proj
+   ```
+
+4. **Install the hexapod task and assets.** Preview, apply, and verify the files:
+
+   ```bash
+   python -B scripts/install_hexapod_task.py --isaacgymenvs "$HOME/hexapod-work/IsaacGymEnvs"
+   python -B scripts/install_hexapod_task.py --isaacgymenvs "$HOME/hexapod-work/IsaacGymEnvs" --apply
+   python -B scripts/install_hexapod_task.py --isaacgymenvs "$HOME/hexapod-work/IsaacGymEnvs" --verify
+   ```
+
+   The installer preserves identical files and blocks conflicts. See the
+   [guide](docs/getting-started.md#5-install-the-original-task-and-assets) for
+   the required layout and manual-copy alternative.
+
+5. **Install the Python package in the same environment.**
+
+   ```bash
+   python -m pip install --no-deps --no-build-isolation --editable "$HOME/hexapod-work/hexapod_proj"
+   ```
+
+   These pip flags preserve the prepared dependency stack; they do not install
+   missing prerequisites. Complete the guide's [package discovery checks](docs/getting-started.md#6-install-the-custom-ppo-package-and-verify-discovery)
+   before starting training below.
 
 ## Training
 
-From this repository root, after completing installation and checking native
-compatibility on your machine:
+After installation and native compatibility checks on your machine, run:
 
 ```bash
 python train_agent.py
 ```
 
-The launcher automatically selects `hexapod`, class `Anymal10`, and the existing
-`hexapodPPO` configuration. Defaults include GPU PhysX, GPU learning, 256
-environments, a viewer (`headless=False`), and a maximum of 600 training epochs.
+The launcher selects the `hexapod` task and `hexapodPPO` configuration. Defaults
+use GPU simulation and learning, 256 parallel environments, a viewer, and a
+maximum of 600 training epochs.
 
 ```bash
-# Displayless GPU server
+# Run without a viewer
 python train_agent.py headless=True
 
-# Smaller, bounded experiment
+# Use fewer parallel environments
 python train_agent.py num_envs=64 max_iterations=100
 
-# Explicit external checkout when automatic discovery is unavailable
+# Select the external checkout if automatic discovery is unavailable
 python train_agent.py isaacgymenvs_path=/absolute/path/to/IsaacGymEnvs
-
-python train_agent.py --help
 ```
 
-Add `headless=True` to other commands on displayless servers. Smaller environment
-counts can trigger the existing minibatch adjustment. Explicit `task=hexapod`
-remains accepted; other tasks and LSTM training are unsupported.
+`headless=True` disables the viewer while retaining GPU execution. `num_envs`
+sets the number of parallel environments, and `max_iterations` sets the total
+training epoch limit. Use `python train_agent.py --help` for supported options.
 
-Outputs default to `runs/Anymal_<timestamp>/`. Resume a **custom** checkpoint:
-
-```bash
-python train_agent.py checkpoint=/path/to/last.pt max_iterations=700
-```
-
-This targets 700 total epochs and starts fresh simulator episodes. Repeat the
-original PPO overrides. Resume creates a new timestamped output directory unless
-`output_dir` is supplied. Checkpoint saves are conditional: `save_frequency=50`
-is not a guarantee of a save every 50 epochs, and interruptions may leave no
-recoverable checkpoint. Read the [checkpoint guide](docs/getting-started.md#8-outputs-and-resuming-training).
+Outputs default to `runs/Anymal_<timestamp>/`. See the guide for
+[training options](docs/getting-started.md#7-start-training) and
+[checkpoint saving and resuming](docs/getting-started.md#8-outputs-and-resuming-training).
 
 ## Evaluation
 
+Load a checkpoint produced by this training application:
+
 ```bash
 python train_agent.py test=True checkpoint=/path/to/last.pt
+
+# Evaluate without a viewer
+python train_agent.py test=True checkpoint=/path/to/last.pt headless=True
 ```
 
-Use `headless=True` on a displayless server and `eval_steps=1000` to set the
-number of evaluation steps. Evaluation uses deterministic means and frozen
-normalization without PPO updates. Historical RL-Games checkpoints are not
-supported. See [evaluation and checkpoint trust](docs/getting-started.md#9-evaluate-a-trained-agent).
+Evaluation runs the trained policy without PPO updates. Use `eval_steps` to
+set its duration (default: 1000 steps). See the
+[evaluation guide](docs/getting-started.md#9-evaluate-a-trained-agent) for
+configuration compatibility and checkpoint loading requirements.
 
-## Repository structure
+## Repository Structure
 
 | Path | Purpose |
 | --- | --- |
-| `train_agent.py` | Custom training/evaluation entry point |
-| `src/hexapod_rl/` | PyTorch learning components and environment integration |
-| `hexapod.py` | Preserved original Isaac Gym task |
-| `hexapod.yaml`, `hexapodPPO.yaml` | Original task and feedforward PPO settings |
-| `hexapodPPO_LSTM.yaml` | Historical configuration; unsupported by the custom launcher |
-| `hexapod2/` | Original robot URDFs, meshes and package files |
-| `scripts/install_hexapod_task.py` | Prepare unchanged task/configuration/asset files |
-| `scripts/check_native_readiness.py` | Inventory and explicitly requested native diagnostics |
-| `tests/`, `ci/` | Offline tests and strict test runner |
-| `docs/` | Installation guide, baseline contracts, PPO details and upstream references |
+| `train_agent.py` | Training and evaluation entry point |
+| `src/hexapod_rl/` | PyTorch PPO, policy networks, and environment integration |
+| `hexapod.py` | Isaac Gym hexapod task |
+| `hexapod.yaml`, `hexapodPPO.yaml` | Task and feedforward PPO configuration |
+| `hexapod2/` | Robot URDFs, meshes, and package metadata |
+| `images/` | Original simulation screenshots |
+| `scripts/install_hexapod_task.py` | Task and asset installation utility |
+| `docs/getting-started.md` | Setup, training, evaluation, and troubleshooting |
 
-## Testing status
+## Testing Status
 
-The [GitHub Actions workflow](.github/workflows/pytorch-tests.yml) uses Ubuntu
-22.04, Python 3.10, PyTorch 1.13.1+cpu, NumPy 1.24.4 and OmegaConf 2.3.0. Its
-strict runner requires at least **209 tests**, complete execution and zero
-failures, errors or skips. View actual run outcomes in the repository's
-[Actions tab](https://github.com/Leo813/hexapod_proj/actions).
-
-Local runs may skip tests when PyTorch or OmegaConf is unavailable; such runs
-do not establish full numerical validation. Consult the Actions results for
-the revision being used. CPU validation does not establish native GPU compatibility.
-
-In a prepared CPU test environment:
-
-```bash
-python -B -m unittest discover -s ci -p 'test_*.py' -v
-python -B ci/run_stage1_tests.py
-```
-
-Ordinary `unittest discover` allows skips; the second command enforces complete
-coverage. Neither CPU tests nor mocks validate native mesh loading, GPU physics,
-sensor ordering, CUDA checkpoint restoration or equivalent learning curves.
-
-## References and attribution
-
-- Yu-Hao Tsai, Saeed Saeedvand and Jacky Baltes,
-  [A Deep Reinforcement Learning Algorithm for Objects Balance Control with Hexapod Robot](Paper_yuhaotsai.pdf).
-- NVIDIA [Isaac Gym Preview 4](https://developer.nvidia.com/isaac-gym/download)
-  and [IsaacGymEnvs](https://github.com/isaac-sim/IsaacGymEnvs/tree/aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3);
-  the original task was adapted from the ANYmal example.
-- [RL-Games v1.6.0 reference mapping](docs/reference-implementation.md)
-  and [independent PPO implementation notes](docs/ppo-implementation.md).
-- [Task installation and native diagnostics](docs/getting-started.md).
+Automated CPU tests are available through
+[GitHub Actions](https://github.com/Leo813/hexapod_proj/actions). CPU testing
+does not validate native Isaac Gym/GPU execution.
 
 ## License
 
-The independently developed software, including the custom PyTorch PPO
-implementation, is provided under the [MIT License](LICENSE), to the extent
-the repository owner holds the necessary rights. Third-party code, robot assets
-and research materials may have separate terms; see
-[Third-party notices](THIRD_PARTY_NOTICES.md). Existing copyright notices remain
-applicable, and the root MIT License does not grant rights over robot assets
-whose licensing remains uncertain.
+The independently developed software is provided under the [MIT License](LICENSE),
+to the extent the repository owner holds the necessary rights. Third-party
+code, robot assets, and research materials retain their applicable terms;
+see [Third-party notices](THIRD_PARTY_NOTICES.md). The root license does not
+grant rights over robot assets whose licensing remains uncertain.
+
+## Citation
+
+If you find this project useful in your research, please consider citing our paper:
+
+Y.-H. Tsai, S. Saeedvand, and J. Baltes,
+"[A Deep Reinforcement Learning Algorithm for Objects Balance Control with Hexapod Robot](https://ieeexplore.ieee.org/document/11093566),"
+in *2025 10th International Conference on Control and Robotics Engineering (ICCRE)*,
+2025, pp. 34–39, doi: [10.1109/ICCRE65455.2025.11093566](https://doi.org/10.1109/ICCRE65455.2025.11093566).
+
+```bibtex
+@INPROCEEDINGS{11093566,
+  author={Tsai, Yu-Hao and Saeedvand, Saeed and Baltes, Jacky},
+  booktitle={2025 10th International Conference on Control and Robotics Engineering (ICCRE)},
+  title={A Deep Reinforcement Learning Algorithm for Objects Balance Control with Hexapod Robot},
+  year={2025},
+  pages={34-39},
+  doi={10.1109/ICCRE65455.2025.11093566}
+}
+```

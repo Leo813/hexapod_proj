@@ -92,10 +92,19 @@ class StaticContractTests(unittest.TestCase):
             self.assertTrue(reference.startswith("package://test_spider6/"))
             self.assertTrue((ROOT / "hexapod2" / reference[len("package://test_spider6/"):]).is_file())
 
-    def test_reference_revisions_are_documented(self):
-        text = (ROOT / "docs" / "reference-implementation.md").read_text(encoding="utf-8")
-        self.assertIn("fa1c13cc10158ab42e829a0971a9dc9a4544b3b9", text)
-        self.assertIn("aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3", text)
+    def test_installation_revision_matches_documented_checkout(self):
+        expected = "aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3"
+        installer = ast.parse((ROOT / "scripts" / "install_hexapod_task.py").read_text(encoding="utf-8"))
+        revisions = [ast.literal_eval(node.value) for node in installer.body
+                     if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == "REFERENCE"
+                             for target in node.targets)]
+        self.assertEqual(revisions, [expected])
+        for name in ("README.md", "docs/getting-started.md"):
+            with self.subTest(document=name):
+                text = (ROOT / name).read_text(encoding="utf-8")
+                checkouts = re.findall(r"^\s*git -C IsaacGymEnvs checkout (\S+)\s*$", text, re.MULTILINE)
+                self.assertEqual(checkouts, [expected])
 
 
 if __name__ == "__main__":

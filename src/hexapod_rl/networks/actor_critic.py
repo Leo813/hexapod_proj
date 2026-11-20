@@ -1,8 +1,6 @@
-"""Independent feedforward actor-critic for the selected historical baseline.
+"""Feedforward actor-critic with separate MLPs and a global log-standard deviation.
 
-Behavioral reference: RL-Games v1.6.0 A2CBuilder and
-ModelA2CContinuousLogStd, attributed in docs/reference-implementation.md.
-No upstream classes are imported or subclassed.
+See docs/ppo-implementation.md for architecture and initialization details.
 """
 
 from typing import NamedTuple, Optional
