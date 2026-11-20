@@ -1,4 +1,4 @@
-# Deep Reinforcement Learning for Hexapod Robot Control
+# Deep Reinforcement Learning for Hexapod Robot Balance Control
 
 ## Overview
 
