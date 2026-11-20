@@ -12,7 +12,10 @@ The research is presented in **A Deep Reinforcement Learning Algorithm for
 Objects Balance Control with Hexapod Robot**, by Yu-Hao Tsai, Saeed Saeedvand,
 and Jacky Baltes, published at **ICCRE 2025**.
 
+To check out the paper:
 **[Paper (IEEE Xplore)](https://ieeexplore.ieee.org/document/11093566)** ·
+
+To see further information about the installation:
 **[Getting started](docs/getting-started.md)**
 
 <p align="center">
