@@ -1,13 +1,9 @@
 # Getting started: installation, training and evaluation
 
-This is the current installation guide for the independent PyTorch PPO
-application. It keeps the original hexapod task, physics, assets and YAML
-settings. Technical details are in the [PPO implementation](ppo-implementation.md)
-and [executable baseline](baseline-contract.md).
-
-The steps below are instructions for your Linux training machine. Native
-Isaac Gym/CUDA execution of this application remains **unverified**; offline
-tests do not certify the native combination or reproduce the paper's results.
+Follow these steps on your Linux training machine to install the hexapod task
+and train or evaluate a PPO policy. Native Isaac Gym/CUDA execution of this
+application remains **unverified**; CPU tests do not establish compatibility
+or reproduction of the paper's results.
 
 ## 1. Prerequisites and the provisional runtime
 
@@ -19,17 +15,16 @@ tests do not certify the native combination or reproduce the paper's results.
 | Isaac Gym | Preview 4, installed separately |
 | IsaacGymEnvs | `aeed298638a1f7b5421b38f5f3cc2d1079b6d9c3` |
 | Simulation | GPU PhysX, GPU pipeline |
-| Learning | Independent PyTorch PPO on GPU |
+| Learning | PyTorch PPO on GPU |
 
 Use one prepared Python environment for all installation and launch commands.
 Keep an existing working CUDA-enabled PyTorch installation intact. If it differs
 from this target, review compatibility before proceeding; the package's broad
 `torch>=1.13` declaration does not certify every newer release with Preview 4.
 
-The separate CPU CI configuration is Ubuntu 22.04, Python 3.10,
-`torch==1.13.1+cpu`, NumPy 1.24.4 and OmegaConf 2.3.0. It tests software without
-Isaac Gym. Do not install that CPU wheel into the GPU training environment or
-copy its NumPy pin into a native environment without checking SDK compatibility.
+The [CPU test environment](../.github/workflows/pytorch-tests.yml) is separate
+from the native runtime. Do not install its CPU PyTorch wheel into the GPU
+environment or copy its NumPy pin without checking SDK compatibility.
 
 You need Git and Python 3.8-compatible build tooling for editable installation:
 pip with PEP 660 support, setuptools with editable hooks (version 64 or later),
@@ -42,20 +37,18 @@ latest tools. [Setuptools editable-hook release](https://setuptools.pypa.io/en/l
 
 Obtain the SDK from the [NVIDIA archive](https://developer.nvidia.com/isaac-gym/download)
 and follow its bundled `docs/index.html` and installation instructions. Those
-instructions take precedence for native dependencies. This repository does not
-download or install the SDK, drivers, CUDA toolkits or PyTorch.
+instructions take precedence for native dependencies. Install the SDK,
+drivers, CUDA tooling, and PyTorch separately from this repository.
 
 The selected PyTorch CUDA build is available in the
 [official historical installation instructions](https://pytorch.org/get-started/previous-versions/).
-Its availability does not prove compatibility with the SDK bindings, driver or
-toolchain used to build native extensions. If SDK requirements conflict with
-the proposed target, resolve that conflict before training.
+Resolve any conflicts between the provisional target and the SDK's binding,
+driver, or native-extension requirements before training.
 
-Check the actual SDK's Python requirements and helper imports. Older SDK
-helpers can reference `np.float`, which NumPy 1.24 removed. This can prevent
-task import even when CPU tests pass. Select a NumPy version compatible with
-your unchanged SDK; this guide does not prescribe an unverified native pin.
-Check terrain-helper dependencies such as SciPy as well.
+Check the SDK's Python and terrain-helper requirements, including SciPy.
+Older helpers may use `np.float`, removed in NumPy 1.24, preventing task import.
+Select a NumPy version compatible with your unchanged SDK; this guide does
+not prescribe a native pin.
 [Preview 4 failure report](https://github.com/isaac-sim/IsaacGymEnvs/issues/183),
 [NumPy alias removal](https://numpy.org/doc/1.24/release/1.24.0-notes.html#expired-deprecations).
 
@@ -96,17 +89,16 @@ register this checkout with the active interpreter:
 python -m pip install --no-deps --no-build-isolation --editable "$HOME/hexapod-work/IsaacGymEnvs"
 ```
 
-This is the external package installation, separate from installing our PPO
-package. The flags prevent pip from resolving runtime dependencies or fetching
-an isolated build environment. They do not supply missing prerequisites.
+This registers the external package separately from the PPO package. The flags
+skip dependency resolution and build isolation, so prerequisites must already
+be installed. Use the same flags for the PPO package below to preserve your
+prepared PyTorch stack.
 
-The upstream package declares dependencies for many other tasks and RL-Games.
-Our launcher bypasses those broad initializers and does not use that trainer.
-Avoid installing the full dependency set just to satisfy unrelated task
-requirements: it can pull in RL-Games, Warp, PySDF, URDFPy and other packages.
-`python -m pip check` may report omitted upstream declarations after a deliberate
-`--no-deps` installation. Review each report against the required runtime;
-do not automatically install everything or dismiss genuine conflicts.
+IsaacGymEnvs also declares dependencies for unrelated tasks and trainers that
+this launcher does not use. `python -m pip check` may report these omissions
+after a `--no-deps` installation. Review reports against the runtime requirements
+above; do not automatically install every upstream dependency or dismiss
+genuine conflicts.
 
 ## 4. Clone this repository
 
@@ -116,17 +108,15 @@ git clone https://github.com/Leo813/hexapod_proj.git
 cd hexapod_proj
 ```
 
-Run the remaining commands from this repository root. The installer and help
-command use the standard library and can run before native dependencies are
-available:
+Run the remaining commands from this repository root. These optional inventory
+and help commands work before native dependencies are installed:
 
 ```bash
 python -B scripts/install_hexapod_task.py --inspect-environment
 python train_agent.py --help
 ```
 
-Inventory reports describe the selected Python environment. Passing metadata
-checks does not prove that native libraries can import or execute.
+Inventory reports do not prove that native libraries can import or execute.
 
 ## 5. Install the original task and assets
 
@@ -143,23 +133,19 @@ python -B scripts/install_hexapod_task.py --isaacgymenvs "$HOME/hexapod-work/Isa
 python -B scripts/install_hexapod_task.py --isaacgymenvs "$HOME/hexapod-work/IsaacGymEnvs" --verify
 ```
 
-Supply the absolute checkout root, not its `isaacgymenvs` subdirectory. Use
-physical paths outside this repository; symlinks and traversal paths are
-rejected. Preview writes nothing. Apply creates missing files and preserves
-identical files. A conflicting file blocks installation; there is no force
-overwrite. Inspect conflicts and deliberately resolve them or use a fresh
-checkout, then preview again. The filesystem must support hard links.
+Supply the absolute checkout root, not its `isaacgymenvs` subdirectory. Use a
+physical path outside this repository; symlinks and traversal paths are rejected,
+and the filesystem must support hard links. Preview writes nothing; apply creates
+missing files and preserves identical files. Conflicts block installation with
+no force-overwrite option. Resolve them or use a fresh checkout, then preview again.
 
-Publication is atomic per file, not for the complete installation. An I/O
-failure can leave verified new files and empty directories; preview again
-before retrying. Use a trusted checkout that is not being changed concurrently.
-Revision mismatches are warnings, not proof of incompatibility; verification
-checks file contents, not native runtime compatibility. CLI syntax errors exit
-2, installation/verification failures exit 1, and successful operations exit 0.
+Use a trusted checkout that is not being changed concurrently. An I/O failure
+can leave a partial installation; preview again before retrying. Verification
+checks file contents, not native runtime compatibility. A revision mismatch is
+a warning rather than proof of incompatibility.
 
-The manifest contains 35 files: three task/configuration files plus the entire
-32-file `hexapod2` tree, including 25 STL meshes. The utility installs task files
-only; it does not install Python packages or the simulator.
+The utility installs the task, two configurations, and complete `hexapod2` asset
+tree. It does not install Python packages or the simulator.
 
 ### Method B: manual copying
 
@@ -208,9 +194,8 @@ After preparing the dependencies above, install the custom package separately:
 python -m pip install --no-deps --no-build-isolation --editable "$HOME/hexapod-work/hexapod_proj"
 ```
 
-This preserves the selected PyTorch build. OmegaConf and the other runtime
-prerequisites must already be installed; `--no-deps` does not install the
-optional integration extra's dependencies.
+OmegaConf and the other runtime prerequisites must already be installed;
+`--no-deps` also skips the optional integration extra's dependencies.
 
 Check discovery without importing the simulator or tensor libraries:
 
@@ -220,22 +205,17 @@ python -c "import importlib.util; print(importlib.util.find_spec('hexapod_rl'))"
 ```
 
 The first result should point to the intended external checkout, with its
-copied task/YAMLs and adjacent assets. **Cloning and copying alone do not make
-IsaacGymEnvs discoverable.** The installer does not remember a checkout path
-for later training. The root entry point adds this repository's `src/` to its
-Python path, but that does not register the external package.
-
-If discovery is unavailable or selects the wrong checkout, the existing
-explicit-path override is:
+installed task and assets. **Cloning and copying alone do not register
+IsaacGymEnvs**, and the installer does not remember its path for training.
+If discovery fails or selects the wrong checkout, specify it explicitly:
 
 ```bash
 python train_agent.py isaacgymenvs_path=/absolute/path/to/IsaacGymEnvs
 ```
 
-Repeat that override for resume and evaluation if needed. Use a fresh process:
-the launcher initializes Isaac Gym before importing PyTorch, then loads only
-the installed `Anymal10` task. Do not import the broad IsaacGymEnvs registry or
-pre-import torch in the same interactive process.
+Repeat this override for resume and evaluation if needed. Use a fresh launcher
+process so Isaac Gym initializes before PyTorch. Do not pre-import torch or
+the broad IsaacGymEnvs registry in the same interactive process.
 
 ## 7. Start training
 
@@ -245,20 +225,16 @@ After installation and native compatibility checks on your machine:
 python train_agent.py
 ```
 
-This starts actual simulation and automatically selects task `hexapod`, class
-`Anymal10`, and configuration `hexapodPPO`. It uses our independent PyTorch PPO.
-No explicit `task=hexapod` argument is required, although it remains accepted.
-Other tasks and LSTM training are unsupported.
+This starts simulation with task `hexapod` and configuration `hexapodPPO`.
+Explicit `task=hexapod` remains accepted. Other tasks and LSTM training are
+unsupported.
 
 | Default | Value |
 | --- | --- |
 | Parallel environments | 256 |
-| Observations / policy actions | 104 / 18; the task couples six mimic-joint actions |
-| Actor and critic | Separate MLPs, 512-256-128 hidden layers, ELU |
 | Simulation / learning | GPU PhysX, `pipeline=gpu`, `sim_device=cuda:0`, `rl_device=cuda:0` |
 | Maximum epochs | 600 |
 | Viewer | `headless=False` |
-| PPO | Existing YAML hyperparameters: horizon 48, minibatch 12288, five mini-epochs |
 
 Displayless GPU servers should disable the viewer:
 
@@ -272,10 +248,9 @@ For a smaller, bounded experiment:
 python train_agent.py num_envs=64 max_iterations=100
 ```
 
-Add `headless=True` on a displayless server. With this smaller environment
-count, the loader reduces the oversized default minibatch to the rollout size
-(3072) and prints the adjustment. This changes the experiment's batch size.
-`max_iterations` counts training epochs, not individual physics steps.
+Add `headless=True` on a displayless server. The smaller example adjusts the
+default minibatch to the rollout size (3072), changing the experiment's batch
+size. `max_iterations` counts training epochs, not physics steps.
 
 The preserved task has three boxes and rough terrain, but fixes commands to
 forward motion. Box-position reward terms and box-fall termination checks are
@@ -321,8 +296,8 @@ inside that run. The original task also creates its own writer under `runs/`.
 Use a writable working directory. `output_dir=/absolute/path/to/run` selects a
 custom training output; a new run refuses a nonempty directory.
 
-Checkpoint creation follows the existing historical gates. Periodic saves
-require completed-episode statistics, an epoch divisible by `save_frequency`,
+Checkpoint creation is conditional. Periodic saves require completed-episode
+statistics, an epoch divisible by `save_frequency`,
 and reward no greater than the stored best reward. Best checkpoints require
 an improved reward and epoch >=500. Winning requires a best reward >10000
 after that gate. Normal completion at the epoch limit saves `last.pt` even if
@@ -341,10 +316,9 @@ python train_agent.py checkpoint=/path/to/last.pt max_iterations=700
 ```
 
 The target is **700 total epochs**, not 700 additional epochs. Resume restores
-model, optimizer/learning rate, normalizers, compatible AMP scaler and RNG
-state, and counters. Simulator episodes start fresh. Without `output_dir`,
-resume creates a new timestamped output location. To continue writing to a
-chosen directory, pass `output_dir=/path/to/run` explicitly.
+training state but starts fresh simulator episodes and, by default, a new
+timestamped output directory. To select an output directory, pass
+`output_dir=/path/to/run` explicitly.
 
 Repeat the original PPO overrides, including `num_envs` and any minibatch
 override: resume checks all PPO settings and network configuration. The saved
@@ -369,12 +343,11 @@ normalization, without PPO updates. It reports episode statistics; the default
 1000 steps may finish before an episode ends. Keep the trained architecture,
 normalization settings and intended task configuration compatible.
 
-Current custom checkpoints use version 3 and restricted loading on PyTorch
-1.13.1. Historical RL-Games checkpoints are not supported. The loader never
-automatically falls back to unrestricted deserialization. For a genuinely
-trusted legacy custom checkpoint only, `trust_legacy_checkpoint=True` permits
-unrestricted pickle loading, which can execute code. Do not enable it simply
-to bypass an unexplained load error. See the
+Use checkpoints produced by this application; historical RL-Games checkpoints
+are unsupported. Current checkpoints use restricted loading on PyTorch 1.13.1.
+For trusted legacy application checkpoints only, `trust_legacy_checkpoint=True`
+allows unrestricted pickle loading, which can execute code. It is never enabled
+automatically; do not use it to bypass an unexplained load error. See the
 [checkpoint format and restoration](ppo-implementation.md#checkpoint-format-and-restoration).
 
 ## 10. Troubleshooting
@@ -397,9 +370,11 @@ to bypass an unexplained load error. See the
 
 ## Native diagnostics
 
-These retained tools inspect the selected environment and optionally run bounded
-native checks. They do not install dependencies or repair an external checkout.
-Use the Python interpreter of the environment being investigated.
+**Advanced, optional checks.** Use these tools after setup to inspect the
+environment or explicitly run bounded native checks. They do not install
+dependencies or repair the checkout. Use the target environment's interpreter.
+
+### Environment inventory
 
 Read-only inventory, without importing torch or Isaac Gym:
 
@@ -407,14 +382,14 @@ Read-only inventory, without importing torch or Isaac Gym:
 python -B scripts/check_native_readiness.py --isaacgymenvs /opt/IsaacGymEnvs --isaacgym-sdk /opt/isaacgym
 ```
 
-Replace the absolute paths with your installations. The optional SDK path reads
-bundled setup/Conda/documentation evidence as text, not executable instructions.
-The report includes package/device metadata and task-file hashes. Without a
-selected checkout it reports an installation-verification blocker. Neither
-inventory mode nor the installer's `--inspect-environment` writes files or
-performs tensor operations. Add `--driver-info` only to request a read-only
-`nvidia-smi` inventory. Metadata exit 0 means no detected blockers, not proven
-native compatibility; exit 1 reports blockers/failure and invalid syntax exits 2.
+Replace the paths with your installations. Inventory reads SDK metadata and
+checks task-file hashes without importing tensor libraries or writing files.
+Omitting the checkout reports an installation-verification blocker. Add
+`--driver-info` for read-only `nvidia-smi` output. Exit 0 means no detected
+metadata blockers, not proven compatibility; blockers/failures exit 1 and
+invalid syntax exits 2.
+
+### Import and CUDA check
 
 On the prepared GPU machine, explicitly request a fresh-process import/CUDA check:
 
@@ -422,13 +397,13 @@ On the prepared GPU machine, explicitly request a fresh-process import/CUDA chec
 python -B scripts/check_native_readiness.py --isaacgymenvs /opt/IsaacGymEnvs --check-imports --device cuda:0 --timeout 60
 ```
 
-This imports Isaac Gym before torch, checks the selected visible CUDA device,
-and squares/sums eight float32 values (expected result 140), then synchronizes.
-It constructs no simulation. Device indices follow `CUDA_VISIBLE_DEVICES`.
-Errors identify the failed import/device/operation or subprocess stage; a
-successful probe can still exit 1 when metadata blockers remain. SDK imports
-may initialize native libraries and use extension caches. Passing this check
-does not establish PhysX, asset or training compatibility.
+This imports Isaac Gym before torch and checks a tensor operation on the
+selected CUDA device without constructing a simulation. Device indices follow
+`CUDA_VISIBLE_DEVICES`; SDK imports may use native extension caches. Metadata
+blockers can still cause exit 1 even if the probe succeeds. Passing does not
+establish PhysX, asset, or training compatibility.
+
+### Bounded training check
 
 After resolving blockers and reviewing import results, a separate flag starts
 the bounded native training diagnostic:
@@ -446,14 +421,11 @@ existing parent. The worker runs there, including the original task's writer.
 Use this wrapper; `scripts/native_smoke.py` is its worker implementation, not a
 standalone launcher. Active flags are not enabled by default or by CPU CI.
 
-The diagnostic uses four environments, one epoch, GPU PhysX/pipeline, headless
-mode and no viewer graphics device. The unchanged horizon 48 and five
-mini-epochs give a minibatch of 192 via the existing adjustment. This is not
-the 256-environment experiment. It checks tensor shapes/devices, sensor/step
-finiteness, native joint/body names, optimizer state and changed finite model
-parameters, then compares a restricted same-device checkpoint restoration on
-a fresh PPO instance. It does not create another simulator or execute a resumed
-update/evaluation after loading. Terrain/contact allocation can still be costly.
+The diagnostic runs four environments for one epoch with GPU PhysX/pipeline,
+headless mode, and a minibatch of 192. It checks tensors, sensor/step finiteness,
+joint/body names, optimizer updates, and same-device checkpoint restoration.
+It does not test resumed updates or evaluation after loading, and terrain/contact
+allocation can still be costly.
 
 Artifacts include `readiness.json`, completed-worker `native-stdout.log` and
 `native-stderr.log`, `resolved-config.json`, `smoke-evidence.json`,
@@ -462,29 +434,19 @@ timeout output tails remain in the readiness report. Timeout must be 1..600
 seconds. A timeout kill can prevent graceful native cleanup; inspect the report
 and use a fresh output directory for a deliberate retry.
 
-Snapshots bracket reset, observation and action methods without adding resets
-or setters. CPU snapshot copies synchronize CUDA and can alter timing; they
-do not prove asynchronous correctness. Constructor resets precede instrumentation.
-If no natural termination occurs, episode/reset coverage remains incomplete.
-Body index 5 and contact indices must still be reviewed against intended links;
-successful sensor creation does not prove correct scientific placement.
-
-Retain tracebacks, version inventory, hashes and measured names/values for review.
-Do not change physics or assets simply to make a diagnostic pass. Same-device
-next-update equivalence, CPU-to-CUDA AMP transitions, evaluation and additional
-natural resets need separate native checks before a full baseline experiment.
+Snapshot copies synchronize CUDA and can alter timing; constructor resets
+precede instrumentation, and natural episode/reset coverage may be incomplete.
+Sensor/body mappings still need review. Passing does not validate asynchronous
+execution, next-update equivalence, CPU-to-CUDA AMP transitions, or evaluation.
+Retain diagnostic artifacts for review; do not change physics or assets simply
+to make a check pass.
 
 ## Validation boundaries and further reading
 
-The strict [CPU workflow](../.github/workflows/pytorch-tests.yml) requires at
-least 209 tests, all executed, with no failures, errors or skips. Local tests
-may skip when dependencies are absent; those results are not full CI success.
-See [README testing status](../README.md#testing-status) for the workflow and test commands.
-
-Native SDK/PyTorch binary compatibility, mesh URI resolution, rigid-body and
-sensor ordering, GPU reset behavior and CUDA checkpoint restoration still
-require execution on the target machine. No successful native training or
-paper-result reproduction is claimed.
+See [GitHub Actions](https://github.com/Leo813/hexapod_proj/actions) for CPU test
+results. Local runs with skipped tests are not equivalent to a successful CI
+run. Native compatibility, mesh loading, sensor ordering, GPU resets, and CUDA
+checkpoint restoration still require target-machine validation.
 
 For technical contracts and attribution, see the [executable baseline](baseline-contract.md),
 [PPO implementation](ppo-implementation.md) and [reference mapping](reference-implementation.md).

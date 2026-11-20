@@ -13,7 +13,6 @@ Objects Balance Control with Hexapod Robot**, by Yu-Hao Tsai, Saeed Saeedvand,
 and Jacky Baltes, published at **ICCRE 2025**.
 
 **[Paper (IEEE Xplore)](https://ieeexplore.ieee.org/document/11093566)** ·
-**[Original demonstration video](https://drive.google.com/file/d/1CU9ajgWKnAI1ainfM-g37qSE5lLipkwa/view?usp=sharing)** ·
 **[Getting started](docs/getting-started.md)**
 
 <p align="center">
@@ -22,16 +21,15 @@ and Jacky Baltes, published at **ICCRE 2025**.
   <em>Hexapod robot carrying stacked objects in simulation.</em>
 </p>
 
-The screenshots and linked video illustrate the original research; they are
-not evidence of a newly verified run of the current application.
+The screenshots illustrate the original research, not a newly verified run
+of the current application.
 
 ## Simulation Environment
 
 NVIDIA Isaac Gym enables GPU-based parallel simulation for reinforcement
-learning. PPO trains the locomotion policy through interaction with the
-hexapod task, which includes terrain and carried objects. Simulation uses
-Isaac Gym Preview 4 and an external IsaacGymEnvs checkout; the learning
-components use PyTorch.
+learning. The hexapod task includes terrain and carried objects, with a PPO
+policy implemented in PyTorch. Simulation uses Isaac Gym Preview 4 and an
+external IsaacGymEnvs checkout.
 
 <p align="center">
   <img src="images/isaac_train_hexapod.png" alt="Many hexapod robots with stacked boxes in parallel Isaac Gym environments" width="800">
@@ -79,9 +77,9 @@ below summarizes its installation procedure for a new Linux workspace.
    python -B scripts/install_hexapod_task.py --isaacgymenvs "$HOME/hexapod-work/IsaacGymEnvs" --verify
    ```
 
-   The installer preserves identical files and blocks conflicting files. Keep
-   the external root configuration and complete asset tree. A manual-copy
-   alternative is documented in the [guide](docs/getting-started.md#5-install-the-original-task-and-assets).
+   The installer preserves identical files and blocks conflicts. See the
+   [guide](docs/getting-started.md#5-install-the-original-task-and-assets) for
+   the required layout and manual-copy alternative.
 
 5. **Install the Python package in the same environment.**
 
@@ -118,8 +116,7 @@ python train_agent.py isaacgymenvs_path=/absolute/path/to/IsaacGymEnvs
 
 `headless=True` disables the viewer while retaining GPU execution. `num_envs`
 sets the number of parallel environments, and `max_iterations` sets the total
-training epoch limit. The smaller example also triggers the existing minibatch
-adjustment. Use `python train_agent.py --help` for supported options.
+training epoch limit. Use `python train_agent.py --help` for supported options.
 
 Outputs default to `runs/Anymal_<timestamp>/`. See the guide for
 [training options](docs/getting-started.md#7-start-training) and
@@ -136,10 +133,10 @@ python train_agent.py test=True checkpoint=/path/to/last.pt
 python train_agent.py test=True checkpoint=/path/to/last.pt headless=True
 ```
 
-Evaluation uses deterministic policy means and frozen normalization, without
-PPO updates. Set `eval_steps=1000` to specify the evaluation duration in steps
-(1000 is the default). See the [evaluation guide](docs/getting-started.md#9-evaluate-a-trained-agent)
-for configuration compatibility and checkpoint loading requirements.
+Evaluation runs the trained policy without PPO updates. Use `eval_steps` to
+set its duration (default: 1000 steps). See the
+[evaluation guide](docs/getting-started.md#9-evaluate-a-trained-agent) for
+configuration compatibility and checkpoint loading requirements.
 
 ## Repository Structure
 
@@ -151,33 +148,14 @@ for configuration compatibility and checkpoint loading requirements.
 | `hexapod.yaml`, `hexapodPPO.yaml` | Task and feedforward PPO configuration |
 | `hexapod2/` | Robot URDFs, meshes, and package metadata |
 | `images/` | Original simulation screenshots |
-| `scripts/` | Task installation and native readiness utilities |
-| `tests/`, `ci/` | Offline automated tests and strict test runner |
-| `docs/` | Installation, executable baseline, and implementation documentation |
-
-Technical details are available in the [baseline contract](docs/baseline-contract.md),
-[PPO implementation notes](docs/ppo-implementation.md), and
-[reference mapping](docs/reference-implementation.md).
+| `scripts/install_hexapod_task.py` | Task and asset installation utility |
+| `docs/getting-started.md` | Setup, training, evaluation, and troubleshooting |
 
 ## Testing Status
 
-The [CPU CI workflow](.github/workflows/pytorch-tests.yml) runs on Ubuntu 22.04
-with Python 3.10 and PyTorch 1.13.1+cpu. Its strict runner requires at least
-209 tests with no failures, errors, or skips. Tests cover learning components,
-configuration, checkpoint handling, integration fixtures, and installation
-utilities without Isaac Gym. Consult the [Actions results](https://github.com/Leo813/hexapod_proj/actions)
-for the revision you use.
-
-In a prepared CPU test environment:
-
-```bash
-python -B -m unittest discover -s ci -p 'test_*.py' -v
-python -B ci/run_stage1_tests.py
-```
-
-Local runs with missing dependencies may skip tests. CPU tests and mocks do
-not establish native GPU compatibility, simulator behavior, successful
-training, or reproduction of the paper's results.
+Automated CPU tests are available through
+[GitHub Actions](https://github.com/Leo813/hexapod_proj/actions). CPU testing
+does not validate native Isaac Gym/GPU execution.
 
 ## License
 
