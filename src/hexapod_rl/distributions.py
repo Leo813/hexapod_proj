@@ -1,9 +1,7 @@
 """Unsquashed diagonal Gaussian policy mathematics.
 
-Reference: RL-Games v1.6.0, ModelA2CContinuousLogStd.Network.neglogp.
-See docs/reference-implementation.md for pinned source attribution. These are
-independent implementations of the equations, with positive log-probabilities
-instead of the reference API's negative log-probabilities.
+Returns positive joint log-probabilities over all action dimensions.
+See docs/ppo-implementation.md for policy and rollout conventions.
 """
 
 import math

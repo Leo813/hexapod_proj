@@ -1,83 +1,76 @@
-# Independent PPO implementation
+# PPO implementation
 
-This document records the maintained learning and application contracts. The
-[executable baseline](baseline-contract.md) governs the environment; the
-[reference mapping](reference-implementation.md) identifies upstream sources
-and attribution. For installation and commands, use [Getting started](getting-started.md).
+The application uses a feedforward actor-critic policy and PPO with single-device
+learning. See [Getting started](getting-started.md) for installation and commands.
 
-## Components and data ownership
+## Software components
 
-`train_agent.py` delegates to `launcher.py`: configuration is composed before
-Isaac Gym initialization, then tensor-dependent application modules are loaded.
-`task_factory.py` establishes process-local package paths and loads the installed
-`Anymal10` without executing the broad IsaacGymEnvs package/task initializers.
-It rejects an already-imported IsaacGymEnvs namespace. Do not mix this loader
-with `isaacgymenvs.make()` in one process; external base/utils code is unchanged.
+`train_agent.py` delegates to `launcher.py`, which composes configuration,
+initializes Isaac Gym, then imports tensor-dependent application modules.
+`integration/task_factory.py` loads the installed `Anymal10` task directly from
+IsaacGymEnvs. It rejects an already-imported IsaacGymEnvs namespace; use a fresh
+process rather than mixing this loader with `isaacgymenvs.make()`.
 
 | Module under `src/hexapod_rl/` | Responsibility |
 | --- | --- |
-| `config.py`, `integration/configuration.py` | Typed network/PPO controls and installed YAML composition |
-| `networks/actor_critic.py`, `distributions.py` | Separate MLPs, trainable global log_std, raw Gaussian actions/densities |
-| `normalization.py` | Observation and scalar-value running moments |
-| `integration/isaacgym_adapter.py`, `collector.py` | Tensor contract, action clipping, persistent collection, episode statistics |
-| `rollout.py`, `advantages.py` | Owned data, minibatches, timeout shaping and GAE |
-| `ppo.py`, `schedules.py` | Losses, Adam/AMP updates, historical KL/LR rule |
-| `trainer.py`, `evaluation.py` | Epoch lifecycle, logging/saving, frozen deterministic evaluation |
-| `checkpoints.py`, `checkpoint_format.py` | Versioned learning-state persistence and metadata codec |
+| `config.py`, `integration/configuration.py` | Typed settings and installed YAML composition |
+| `networks/actor_critic.py`, `distributions.py` | Actor-critic network and Gaussian policy |
+| `normalization.py` | Observation and value running statistics |
+| `integration/isaacgym_adapter.py`, `collector.py` | Environment interface and persistent rollout collection |
+| `rollout.py`, `advantages.py` | Rollout storage, minibatches, timeout shaping, and GAE |
+| `ppo.py`, `schedules.py` | PPO losses, Adam/AMP updates, and adaptive learning rate |
+| `trainer.py`, `evaluation.py` | Training lifecycle and policy evaluation |
+| `checkpoints.py`, `checkpoint_format.py` | Learning-state persistence and metadata encoding |
+
+## Actor-critic network
+
+The default network accepts 104 observations. Separate actor and critic MLPs
+have hidden widths 512, 256, and 128, with ELU after each hidden layer. The actor
+has an unbounded 18-dimensional mean head; the critic has a scalar value head.
+Linear layers retain their PyTorch constructor weights and have zero biases.
+A trainable, observation-independent `log_std` vector starts at zero, giving
+unit standard deviation. There are no recurrent layers, dropout, or LayerNorm.
+
+The policy is an unsquashed diagonal Gaussian. Log-probabilities and entropy
+sum all 18 action dimensions. Raw network calls do not normalize observations,
+denormalize values, clip actions, or apply joint coupling; PPO and the environment
+adapter supply those transformations. Singleton evaluation is supported, while
+sample-variance normalization requires at least two training samples.
 
 Construct the model on its final device before `PPO(model, config)`. Model and
-rollout data use float32; normalizer accumulators use float64. `PPO.sample(obs)`
-returns raw actions, positive joint log densities, denormalized values, means
-and standard deviations. `predict_values(obs)` bootstraps without sampling.
+rollout tensors use float32; normalizer buffers use float64. `PPO.sample(obs)`
+returns raw actions, positive joint log-probabilities, denormalized values,
+means, and standard deviations. `predict_values(obs)` does not sample actions.
+Values have shape `[N,1]`, actions/means/stds `[N,18]`, and log-probabilities `[N]`.
 
-The adapter accepts float32 `[N,104]` observations and `[N]` rewards on the RL
-device, integer/bool `[N]` dones/timeouts, and 18-action bounds [-1,1]. Missing
-`extras['time_outs']` is an error. VecTask clips observations; the adapter does
-not repeat that transformation or silently move incorrectly placed results.
+## Environment and rollout processing
 
-The collector calls `reset()` once, starts with all-one boundary flags, and
-copies policy fields into `[T,N,...]` storage **before** `env.step`. Independently
-allocated clipped actions protect raw samples from task-side mimic mutation.
-Outcome tensors are copied immediately afterward. Observations/dones persist
-across rollouts; no eager physics step, reset_done or immediate autoreset is
-introduced. Values/rewards have a trailing singleton axis; log densities/flags
-do not. Flattening swaps time/environment first, then copies into owned storage.
+The adapter requires float32 `[N,104]` observations and `[N]` rewards on the
+learning device, integer/bool `[N]` dones/timeouts, and action bounds [-1,1].
+`extras['time_outs']` is required. VecTask clips observations; the adapter does
+not repeat that clipping or silently move results from the wrong device.
 
-Episode statistics use raw rewards and a capped batch-weighted completed-episode
-mean (capacity 100), matching reference AverageMeter rather than a last-100 deque.
-`set_train_info(frames)` runs before collection. A completed update advances one
-epoch and `N*T` frames; incomplete updates do not advance counters. Cleanup closes
-the adapter and logger; the adapter destroys viewer/simulator handles when the
-pinned VecTask has no `close()`. Partial task-construction failures may leave
-native handles until process exit. Save gates are described in the user guide.
+The collector resets once and retains observations and boundary flags between
+rollouts. It copies raw policy samples into owned `[T,N,...]` storage before
+`env.step`, then immediately copies the resulting observations, rewards, and
+flags. A separate action tensor is clipped to [-1,1] before the task mutates it
+for joint coupling. Likelihoods always use the stored raw actions.
 
-## Normalization and target preparation
+The task couples six tibia actions to negative femur actions and accumulates
+position targets. All 18 policy components remain part of the distribution.
+Reset handling is deferred by the task; the collector adds no eager physics
+step or immediate autoreset. Its initial reset returns the allocated observation
+buffer. Actor-state views assume the robot followed by three boxes. Preserve
+these interface conventions when maintaining integration code.
 
-Initialize running mean `m=0`, variance `v=1`, count `c=1` in float64. Compute
-batch mean `b` and sample variance `s2` (denominator `n-1`) in the input dtype.
-With `d=b-m` and `C=c+n`, merge:
+Episode statistics use raw rewards and a capped batch-weighted mean of completed
+episodes (capacity 100). Each completed update advances one epoch and `N*T`
+frames. Cleanup closes logging and simulator/viewer handles; partial task
+construction failures may leave native handles until process exit. Offline
+fixtures must not import `hexapod.py`, which imports the simulator and creates
+a module-level TensorBoard writer.
 
-```text
-m_new = m + d*n/C
-v_new = (c*v + n*s2 + d*d*c*n/C) / C
-c_new = C
-normalize(x)   = clamp((x-m)/sqrt(v+1e-5), -5, 5)
-denormalize(z) = clamp(z, -5, 5)*sqrt(v+1e-5) + m
-```
-
-Transformations use float32 views of the statistics. The initial count and
-`n*s2` merge term intentionally retain reference behavior. Registered buffers
-hold the moments; size/epsilon/clipping settings must also match on restoration.
-Move normalizers by device without casting their buffers to model dtype.
-
-Rollout moments are frozen, and stored values are in reward units. Compute
-advantages/returns before value normalization. Then update the value normalizer
-on old values and transform them, update again on returns and transform them,
-and freeze it. These transformations use different moments. Observation moments
-update before each forward in the first optimization mini-epoch only, then
-freeze until the next rollout's optimization.
-
-Timeout shaping uses the pre-action value, not a terminal-observation value:
+Timeout shaping and generalized advantage estimation use reward-unit values:
 
 ```text
 r_shaped[t] = reward_scale*r[t] + gamma*V[t]*timeout[t]  # if bootstrap enabled
@@ -87,21 +80,46 @@ A[t] = delta[t] + gamma*tau*q[t]*A_next
 R[t] = A[t] + V[t]
 ```
 
-The final continuation uses `last_values` with `A_next=0`. Stored `dones[t]`
-describe the pre-action state; non-final next masks use `dones[t+1]`. Timeouts
-remain done boundaries. Standardize advantages globally using sample standard
-deviation: `(A-mean(A))/(std(A)+1e-8)`.
+Timeout shaping uses the pre-action value; timeouts remain done boundaries.
+Stored `dones[t]` describe the pre-action state, so non-final masks use
+`dones[t+1]`. The final continuation uses `last_values` and `A_next=0`.
+Defaults are `gamma=0.99`, `tau=0.95`, and a horizon of 48 steps.
 
-`prepare_batch(rollout)` updates value statistics, so call it once per rollout.
-`optimize(batch)` operates on detached prepared data; `update(rollout)` combines
-the two. Minibatches are contiguous, environment-major slices, with no shuffling.
-Minibatch size must divide the batch exactly; baseline `256*48=12288` gives one minibatch per
-pass for five passes. Old log densities stay fixed; KL mean/std references are
-updated after each minibatch with its evaluated distribution.
+Rollouts flatten in environment-major order into contiguous minibatches without
+shuffling. Minibatch size must divide the batch exactly. The default
+`256*48=12288` samples form one minibatch per pass, repeated for five mini-epochs.
+Old log-probabilities stay fixed; stored KL means/stds update after each minibatch
+with its evaluated distribution.
 
-## Losses and optimizer ordering
+## Normalization and target preparation
 
-For positive log densities, `ratio=exp(logp_new-logp_old)` and clip width `e=0.2`:
+Running mean, variance, and count start at 0, 1, and 1 in float64. Batch moments
+use the input dtype and sample variance (denominator `n-1`). For batch mean `b`,
+variance `s2`, count `n`, current moments `m,v,c`, and `d=b-m`, `C=c+n`:
+
+```text
+m_new = m + d*n/C
+v_new = (c*v + n*s2 + d*d*c*n/C) / C
+c_new = C
+normalize(x)   = clamp((x-m)/sqrt(v+1e-5), -5, 5)
+denormalize(z) = clamp(z, -5, 5)*sqrt(v+1e-5) + m
+```
+
+Transformations use float32 views of the statistics. Move normalizers by device
+without casting their buffers to the model dtype. Moments are frozen during
+rollout collection. Advantages and returns are computed before value normalization;
+advantages are standardized using `(A-mean(A))/(std(A)+1e-8)` with sample std.
+
+Batch preparation updates value statistics on old values and transforms them,
+then updates again on returns and transforms them. These transformations use
+different moments. Observation statistics update before each forward pass only
+in the first optimization mini-epoch, then freeze. Call `prepare_batch(rollout)`
+once per rollout; `optimize(batch)` consumes its detached output, and
+`update(rollout)` combines both operations.
+
+## Losses and optimization
+
+For `ratio=exp(logp_new-logp_old)` and default clip width `e=0.2`:
 
 ```text
 L_policy = mean(max(-A*ratio, -A*clamp(ratio, 1-e, 1+e)))
@@ -113,18 +131,17 @@ L_total = L_policy + 0.5*critic_coef*L_critic
           - entropy_coef*H + bounds_loss_coef*L_bounds
 ```
 
-Without value clipping, use only unclipped squared error. Bounds penalize means,
-not sampled/clipped actions. There is no tanh squashing, std clamp, KL loss or
-KL early stopping. All 18 policy components contribute to likelihood and entropy.
+Without value clipping, the critic uses unclipped squared error. Default critic,
+entropy, and bounds coefficients are 2, 0, and 0.001. Bounds penalize policy means.
+There is no tanh squashing, std clamp, KL loss, or KL early stopping.
 
-Adam defaults are LR `3e-4`, epsilon `1e-8`, betas `(0.9,0.999)`, weight decay 0,
-AMSGrad disabled. For each minibatch: forward/loss under enabled CUDA autocast;
-clear gradients to None; scale/backward; unscale before clipping gradient norm
-to 1; scaler.step; scaler.update; then evaluate KL and adapt the next LR.
-Reported gradient norm precedes clipping. CPU disables CUDA AMP. Scalar logging
-can synchronize GPU execution; CPU tests do not validate mixed-precision parity.
+Adam uses default LR `3e-4`, epsilon `1e-8`, betas `(0.9,0.999)`, zero weight decay,
+and no AMSGrad. Each minibatch performs forward/loss under enabled CUDA autocast,
+clears gradients, scales/backpropagates the loss, unscales gradients, clips their
+norm to 1, and steps/updates the scaler. CPU execution disables CUDA AMP.
 
-For current pre-update forward parameters `(m0,s0)` and stored `(m1,s1)`:
+The adaptive schedule updates after each minibatch. For current pre-update
+forward parameters `(m0,s0)` and stored `(m1,s1)`:
 
 ```text
 KL = mean_samples(sum_actions(
@@ -134,61 +151,50 @@ KL < 0.5*0.008 -> LR = min(LR*1.5, 1e-2)
 otherwise     -> unchanged
 ```
 
-Comparisons are strict and adaptation occurs after every minibatch. The KL
-epsilon placement is intentional; identical distributions need not give exactly
-zero, and the result is not clamped. Current parameters were evaluated before
-the optimizer step even though KL is calculated afterward.
+Comparisons are strict. The current distribution was evaluated before the
+optimizer step, although KL is calculated afterward. Epsilon placement means
+identical distributions need not yield exactly zero; KL is not clamped.
 
 ## Checkpoint format and restoration
 
-Version 3 archives contain `format_version`, a JSON `metadata` string and a
-tensor list, saved with pickle protocol 2 through temporary-file/atomic replacement.
-Tags encode literals, hexadecimal floats, tuples/lists, dictionaries (including
-integer keys), ordered dictionaries with `_metadata`, and tensor indices.
-NumPy RNG arrays become integer lists. Unsupported metadata objects/cycles are
-not supported. The codec does not import classes or execute file-provided calls.
-This remains a torch/pickle archive, not a non-pickle format.
+Version 3 archives contain `format_version`, a JSON `metadata` string, and a
+tensor list. Saves use pickle protocol 2 and temporary-file/atomic replacement.
+Metadata tags encode literals, hexadecimal floats, tuples/lists, dictionaries
+(including integer keys), ordered dictionaries with `_metadata`, and tensor
+indices. NumPy RNG arrays become integer lists. Unsupported objects and cycles
+are rejected; the codec does not import classes or execute metadata-provided
+calls. The file remains a torch/pickle archive. This encoding supports restricted
+loading on PyTorch 1.13.1.
 
-The representation avoids unsupported Python-float `BINFLOAT` and newer pickle
-opcodes in the historical restricted loader. See
-[PyTorch 1.13.1 unpickler](https://github.com/pytorch/pytorch/blob/v1.13.1/torch/_weights_only_unpickler.py)
-and [serialization API](https://github.com/pytorch/pytorch/blob/v1.13.1/torch/serialization.py).
+Resume restores the model, both normalizers, Adam moments/LR, AMP scaler,
+counters, and Python/NumPy/torch CPU/available CUDA RNG state. Network and all
+PPO settings must match. Loading checks normalization compatibility, optimizer
+LR consistency, and CUDA RNG device count. Simulator state and episode-meter
+history are not restored. Task/physics settings must be retained separately.
 
-Resume restores model, both normalizers, Adam moments/LR, AMP scaler, counters
-and Python/NumPy/torch CPU/available CUDA RNG. Network and all PPO settings must
-match; normalization compatibility, optimizer LR consistency and CUDA RNG device
-count are checked. Simulator state and episode-meter history are not restored.
-Evaluation loads only model/normalizers, permits a different environment count,
-freezes normalization and performs no optimizer updates.
+An enabled destination scaler with an empty saved CPU scaler starts fresh with
+a warning; nonempty enabled state restores normally. Disabled destinations use
+PyTorch's no-op scaler loading. Missing CUDA RNG/AMP history cannot be recovered
+from a CPU run.
 
-An enabled destination scaler with an empty saved CPU scaler gets a fresh enabled
-scaler and warning; nonempty enabled state restores normally. Disabled destinations
-use PyTorch's no-op scaler loading. Missing CUDA RNG/AMP history cannot be recovered
-from a CPU run. Same-device CUDA and CPU-to-CUDA behavior require native validation.
-[GradScaler reference](https://github.com/pytorch/pytorch/blob/v1.13.1/torch/cuda/amp/grad_scaler.py).
+Loading uses CPU mapping and `weights_only=True` where available. Version 1
+requires explicit trust. Version 2 float metadata also requires trust on
+PyTorch 1.13.1; a successful restricted version 2 load is accepted on capable
+runtimes. If the `weights_only` API is absent, loading is rejected before
+deserialization unless trust is explicit; this does not extend supported PyTorch
+versions below the package requirement.
 
-Loading explicitly uses CPU mapping and `weights_only=True` where available.
-Version 1 requires explicit trust; version 2 float metadata also needs it on
-1.13.1, while a successful restricted version 2 load is accepted on capable
-runtimes. Without the `weights_only` API, loading is rejected before deserialization
-unless trust is explicit. This fallback does not establish support for a torch
-version below the package requirement. `trust_legacy_checkpoint=True` permits
-unrestricted pickle execution and warns; no failure triggers an automatic retry.
-Use known-source files only: restricted loading is not a security sandbox.
-New saves are version 3; old code cannot read the envelope. RL-Games checkpoints
-are not supported. See the [user commands](getting-started.md#9-evaluate-a-trained-agent).
+`trust_legacy_checkpoint=True` permits unrestricted pickle execution and emits
+a warning. Load known-source files only: restricted loading is not a security
+sandbox, and failures never trigger an automatic unrestricted retry. New saves
+use version 3, which older application code cannot read. Other applications'
+checkpoint formats are unsupported. See [saving and resuming](getting-started.md#8-outputs-and-resuming-training)
+for conditional saves, output paths, and required overrides.
 
-## Validation boundaries
+## Evaluation
 
-Tests cover analytical losses/gradients, moment timing, GAE boundaries, data
-ownership, optimizer ordering, mocked train/resume/evaluation and serialization.
-The strict runner requires all tests with no skips; see
-[testing status](../README.md#testing-status). No simulator or RL-Games import is
-needed for these fixtures. They do not establish native physics or learning curves.
-
-Supported scope is a feedforward policy, vector observations, scalar critic,
-single-device learning and legacy scheduling. Singleton training batches with
-sample-variance normalization fail explicitly; singleton evaluation is supported.
-LSTM, distributed learning and original-framework checkpoint conversion are absent.
-Exact upstream RNG consumption and bitwise initialization are not promised;
-the reference document explains those boundaries.
+Evaluation restores the model and normalizers, permits a different environment
+count, freezes normalization, and selects deterministic policy means without
+sampling or optimizer updates. Actions still pass through environment clipping
+and coupling. Keep the trained architecture and normalization settings compatible;
+see [evaluation commands](getting-started.md#9-evaluate-a-trained-agent).

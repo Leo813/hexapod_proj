@@ -1,7 +1,8 @@
 """Reference-specific KL and legacy per-minibatch adaptive LR, not early stopping.
 
 Source attribution: RL-Games v1.6.0 torch_ext.policy_kl and
-common.schedulers.AdaptiveScheduler; see docs/ppo-implementation.md.
+common.schedulers.AdaptiveScheduler.
+See docs/ppo-implementation.md for the maintained equations and update timing.
 """
 
 import math

@@ -40,15 +40,6 @@ and the external IsaacGymEnvs installation remain subject to their respective
 terms. This repository does not bundle the complete Isaac Gym SDK. The root
 MIT License does not license these external dependencies.
 
-## RL-Games reference
-
-[RL-Games](https://github.com/Denys88/rl_games), by Denys Makoviichuk and Viktor
-Makoviichuk, is a historical implementation reference for the independent PPO
-implementation. It is not the custom training backend, and its package is not
-bundled. The [reference mapping](docs/reference-implementation.md) preserves
-upstream attribution and pinned source links; this acknowledgement does not
-assert that RL-Games source files were copied into the custom package.
-
 ## Research paper
 
 Yu-Hao Tsai, Saeed Saeedvand and Jacky Baltes authored

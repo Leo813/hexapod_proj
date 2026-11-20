@@ -1,6 +1,6 @@
 """Independent vector RunningMeanStd matching RL-Games v1.6.0.
 
-See docs/ppo-implementation.md for source attribution and update timing.
+See docs/ppo-implementation.md for moment updates and normalization timing.
 Sample variance, initial count 1, float64 accumulators, and float32 output
 statistics are intentional. Singleton training batches are rejected rather
 than poisoning state with the reference's undefined variance.

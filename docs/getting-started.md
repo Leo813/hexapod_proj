@@ -2,8 +2,8 @@
 
 Follow these steps on your Linux training machine to install the hexapod task
 and train or evaluate a PPO policy. Native Isaac Gym/CUDA execution of this
-application remains **unverified**; CPU tests do not establish compatibility
-or reproduction of the paper's results.
+application remains **unverified**. For software components and algorithms,
+see the [PPO implementation](ppo-implementation.md).
 
 ## 1. Prerequisites and the provisional runtime
 
@@ -66,7 +66,7 @@ The task imports matplotlib and creates a TensorBoard writer even when
 `tensorboard=False`. Do not omit these dependencies on that basis. The complete
 SDK dependency set must come from the SDK itself, not this table.
 
-## 3. Prepare the historical IsaacGymEnvs checkout
+## 3. Prepare the external IsaacGymEnvs checkout
 
 For a new workspace, the examples use sibling checkouts under
 `$HOME/hexapod-work`. Substitute your own absolute paths consistently.
@@ -116,8 +116,6 @@ python -B scripts/install_hexapod_task.py --inspect-environment
 python train_agent.py --help
 ```
 
-Inventory reports do not prove that native libraries can import or execute.
-
 ## 5. Install the original task and assets
 
 Choose either method. Both produce the same required layout; neither needs a
@@ -141,8 +139,7 @@ no force-overwrite option. Resolve them or use a fresh checkout, then preview ag
 
 Use a trusted checkout that is not being changed concurrently. An I/O failure
 can leave a partial installation; preview again before retrying. Verification
-checks file contents, not native runtime compatibility. A revision mismatch is
-a warning rather than proof of incompatibility.
+checks file contents; a revision mismatch is reported as a warning.
 
 The utility installs the task, two configurations, and complete `hexapod2` asset
 tree. It does not install Python packages or the simulator.
@@ -181,10 +178,9 @@ Verify manual copying with the same utility:
 python -B scripts/install_hexapod_task.py --isaacgymenvs "$HOME/hexapod-work/IsaacGymEnvs" --verify
 ```
 
-Verification checks file placement and content. Native mesh loading remains
-unverified: the URDF uses `package://test_spider6/meshes/...`, matching its
-package name, while the directory is named `hexapod2`. All referenced mesh
-filenames are supplied, but importer URI resolution needs a native check.
+The URDF uses `package://test_spider6/meshes/...` while the asset directory is
+named `hexapod2`. Preserve this layout; if the native importer cannot resolve
+the mesh paths, inspect its diagnostics before changing the task or assets.
 
 ## 6. Install the custom PPO package and verify discovery
 
@@ -252,11 +248,6 @@ Add `headless=True` on a displayless server. The smaller example adjusts the
 default minibatch to the rollout size (3072), changing the experiment's batch
 size. `max_iterations` counts training epochs, not physics steps.
 
-The preserved task has three boxes and rough terrain, but fixes commands to
-forward motion. Box-position reward terms and box-fall termination checks are
-inactive. It does not implement the paper's full curriculum or establish
-successful object balancing. See the [baseline contract](baseline-contract.md).
-
 ### Additional configuration
 
 For other supported settings, run `--help`. The loader accepts `key=value`
@@ -276,6 +267,25 @@ are interpreted from that directory. A specified minibatch override always
 wins over the smaller-environment convenience adjustment and must divide the
 rollout size. Devices must be `cpu` or `cuda:<index>`; GPU pipeline requires a
 CUDA simulator device. CPU simulation still requires Isaac Gym.
+
+Some task settings are fixed in code. The launcher reports notices when
+overrides target fields that do not control the behavior their names suggest:
+
+| Field under `task.env` | Effective behavior |
+| --- | --- |
+| `envSpacing` | Fixed at 1.0 |
+| `control.controlFrequencyInv` | VecTask uses `env.controlFrequencyInv` instead |
+| `urdfAsset.collapseFixedJoints`, `fixBaseLink`, `defaultDofDriveMode` | Collapsed fixed joints, free base, position drives |
+| `baseInitState.rot`, `vLinear`, `vAngular` | Not applied to initial actor/reset snapshots |
+| `randomCommandVelocityRanges.*` | Sampled commands are overwritten by the fixed command |
+| `learn.linearVelocityXYRewardScale`, `angularVelocityZRewardScale` | Active coefficients are fixed in code |
+
+Notices do not remap these fields. Default joint angles affect randomized resets,
+but the position-target reset remains fixed. Use `reward_shaper.scale_value` for
+reward scaling; an additional `reward_scale` must be numeric and equal to it.
+`clipActions` and `clipObservations` accept nonnegative numbers (including zero
+and infinity), but not booleans or NaN. Adapter clipping to [-1,1] still applies
+to actions before VecTask clipping.
 
 ## 8. Outputs and resuming training
 
@@ -343,8 +353,8 @@ normalization, without PPO updates. It reports episode statistics; the default
 1000 steps may finish before an episode ends. Keep the trained architecture,
 normalization settings and intended task configuration compatible.
 
-Use checkpoints produced by this application; historical RL-Games checkpoints
-are unsupported. Current checkpoints use restricted loading on PyTorch 1.13.1.
+Use checkpoints produced by this application; other checkpoint formats are
+unsupported. Current checkpoints use restricted loading on PyTorch 1.13.1.
 For trusted legacy application checkpoints only, `trust_legacy_checkpoint=True`
 allows unrestricted pickle loading, which can execute code. It is never enabled
 automatically; do not use it to bypass an unexplained load error. See the
@@ -366,7 +376,6 @@ automatically; do not use it to bypass an unexplained load error. See the
 | Mesh resolution / body or sensor mismatch | Retain the supplied layout; capture native importer diagnostics for review before changing assets or task code. |
 | Resume rejects PPO settings | Repeat the original overrides; inspect `resolved-config.json`. Increasing the total epoch limit is allowed. |
 | No checkpoint after interruption | Inspect the actual files; the save gates above may not have produced one. |
-| Old torch 1.10.x notice in readiness output | This retained diagnostic notice describes an earlier candidate; the runtime table above is the current provisional target. Metadata notices do not certify native compatibility. |
 
 ## Native diagnostics
 
@@ -386,8 +395,7 @@ Replace the paths with your installations. Inventory reads SDK metadata and
 checks task-file hashes without importing tensor libraries or writing files.
 Omitting the checkout reports an installation-verification blocker. Add
 `--driver-info` for read-only `nvidia-smi` output. Exit 0 means no detected
-metadata blockers, not proven compatibility; blockers/failures exit 1 and
-invalid syntax exits 2.
+metadata blockers; blockers/failures exit 1 and invalid syntax exits 2.
 
 ### Import and CUDA check
 
@@ -400,8 +408,7 @@ python -B scripts/check_native_readiness.py --isaacgymenvs /opt/IsaacGymEnvs --c
 This imports Isaac Gym before torch and checks a tensor operation on the
 selected CUDA device without constructing a simulation. Device indices follow
 `CUDA_VISIBLE_DEVICES`; SDK imports may use native extension caches. Metadata
-blockers can still cause exit 1 even if the probe succeeds. Passing does not
-establish PhysX, asset, or training compatibility.
+blockers can still cause exit 1 even if the probe succeeds.
 
 ### Bounded training check
 
@@ -434,19 +441,6 @@ timeout output tails remain in the readiness report. Timeout must be 1..600
 seconds. A timeout kill can prevent graceful native cleanup; inspect the report
 and use a fresh output directory for a deliberate retry.
 
-Snapshot copies synchronize CUDA and can alter timing; constructor resets
-precede instrumentation, and natural episode/reset coverage may be incomplete.
-Sensor/body mappings still need review. Passing does not validate asynchronous
-execution, next-update equivalence, CPU-to-CUDA AMP transitions, or evaluation.
-Retain diagnostic artifacts for review; do not change physics or assets simply
-to make a check pass.
-
-## Validation boundaries and further reading
-
-See [GitHub Actions](https://github.com/Leo813/hexapod_proj/actions) for CPU test
-results. Local runs with skipped tests are not equivalent to a successful CI
-run. Native compatibility, mesh loading, sensor ordering, GPU resets, and CUDA
-checkpoint restoration still require target-machine validation.
-
-For technical contracts and attribution, see the [executable baseline](baseline-contract.md),
-[PPO implementation](ppo-implementation.md) and [reference mapping](reference-implementation.md).
+Retain diagnostic artifacts for review. The check covers a short training run
+and checkpoint restoration, not a full experiment. Do not change physics or
+assets simply to make a check pass.
