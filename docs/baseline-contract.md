@@ -279,7 +279,7 @@ and observation clipping remains separate from running normalization.
 
 ## Paper discrepancies
 
-**Local comparison:** `Paper_yuhaotsai.pdf`, especially pages 2-5, describes
+**Published-paper comparison:** The [ICCRE 2025 paper](https://doi.org/10.1109/ICCRE65455.2025.11093566) describes
 the research objectives and staged experiments. It does not supersede code.
 
 | Topic | Paper | Executable baseline |

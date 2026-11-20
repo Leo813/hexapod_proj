@@ -52,8 +52,9 @@ assert that RL-Games source files were copied into the custom package.
 ## Research paper
 
 Yu-Hao Tsai, Saeed Saeedvand and Jacky Baltes authored
-[A Deep Reinforcement Learning Algorithm for Objects Balance Control with Hexapod Robot](Paper_yuhaotsai.pdf),
-included in this repository. The paper retains its original author attribution
+[A Deep Reinforcement Learning Algorithm for Objects Balance Control with Hexapod Robot](https://ieeexplore.ieee.org/document/11093566),
+published in the 2025 10th International Conference on Control and Robotics
+Engineering (ICCRE). The paper retains its original author attribution
 and is not placed under the root MIT software license. No Creative Commons
 license is introduced; any applicable rights and publication terms remain with
 their respective holders.
